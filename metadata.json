@@ -1,0 +1,7 @@
+{
+  "name": "MindPlanet Project",
+  "description": "An online mental health learning platform for high school students, using a 'Planet Cultivation' concept to guide stress management and resilience building.",
+  "requestFramePermissions": [
+    "microphone"
+  ]
+}
