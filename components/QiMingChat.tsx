@@ -6,23 +6,19 @@ const QiMingChat: React.FC = () => {
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   
-  // 聊天记录
   const [messages, setMessages] = useState<{role: 'ai' | 'user', text: string}[]>([
     { role: 'ai', text: "Hi! I am Nova. If you are navigating any emotional challenges or just need to talk, I am here to support you." }
   ]);
   
   const scrollRef = useRef<HTMLDivElement>(null);
-  const chatClientRef = useRef<any>(null); // 保存 API 客户端
   const audioContextRef = useRef<AudioContext | null>(null);
 
-  // 自动滚动
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
   }, [messages, isLoading]);
 
-  // --- 工具：解码音频数据 ---
   const decodeBase64 = (base64: string) => {
     const binaryString = atob(base64);
     const len = binaryString.length;
@@ -44,39 +40,35 @@ const QiMingChat: React.FC = () => {
     return buffer;
   };
 
-  // --- 关键 1：真人语音播放 (Human Voice) ---
+  // --- 语音部分：保持使用 Gemini 2.0 (因为它的声音最好听) ---
   const playGreeting = async () => {
     try {
-      // 1. 初始化音频上下文
       if (!audioContextRef.current) {
         audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
       }
       const ctx = audioContextRef.current;
       if (ctx.state === 'suspended') await ctx.resume();
 
-      // 2. 调用新版 SDK 生成语音
       const apiKey = process.env.API_KEY || process.env.GEMINI_API_KEY;
-      if (!apiKey) throw new Error("API Key missing");
+      if (!apiKey) return;
 
       const ai = new GoogleGenAI({ apiKey: apiKey });
       
-      // 使用 Gemini 2.0 Flash Exp 模型 (支持音频输出)
       const response = await ai.models.generateContent({
-        model: "gemini-2.0-flash-exp", 
+        model: "gemini-2.0-flash-exp", // 语音继续用 2.0
         contents: [{ 
             parts: [{ 
                 text: "Hi! I am Nova. If you are navigating any emotional challenges, or just need to talk, I am here to support you." 
             }] 
         }],
         config: {
-          responseModalities: ["AUDIO"], // 专门请求音频
+          responseModalities: ["AUDIO"],
           speechConfig: {
-            voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Aoede' } }, // Aoede 是真人感很强的女声
+            voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Aoede' } },
           },
         },
       });
 
-      // 3. 播放
       const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
       if (base64Audio) {
         const audioBuffer = await decodeAudioData(decodeBase64(base64Audio), ctx);
@@ -87,11 +79,10 @@ const QiMingChat: React.FC = () => {
       }
     } catch (err) {
       console.error("Voice Error:", err);
-      // 如果真人语音失败，暂时不说话，避免出现机械音破坏气氛
     }
   };
 
-  // --- 关键 2：智能聊天 (Smart Chat) ---
+  // --- 聊天部分：换回 Gemini 1.5 Flash (因为它可以 100% 稳定回复文字) ---
   const handleSend = async () => {
     if (!input.trim() || isLoading) return;
 
@@ -106,10 +97,9 @@ const QiMingChat: React.FC = () => {
 
       const ai = new GoogleGenAI({ apiKey: apiKey });
       
-      // 使用同一个强大的 Gemini 2.0 模型进行对话
-      // 注意：这里我们不加 config 里的 AUDIO，只让它回文字，这样最稳定
+      // 关键修改：聊天改用 'gemini-1.5-flash'，这能解决 Model not found 问题
       const response = await ai.models.generateContent({
-        model: "gemini-2.0-flash-exp",
+        model: "gemini-1.5-flash", 
         contents: [
             { role: "user", parts: [{ text: userMsg }] }
         ],
@@ -122,12 +112,9 @@ const QiMingChat: React.FC = () => {
       setMessages(prev => [...prev, { role: 'ai', text: aiText }]);
 
     } catch (error: any) {
-      console.error("Chat Error Details:", error);
+      console.error("Chat Error:", error);
       let errorMsg = "Connection lost. Please try again.";
-      
-      if (error.message?.includes("404")) errorMsg = "Error: Model not found (Check Region/Key).";
-      if (error.message?.includes("401")) errorMsg = "Error: Invalid API Key.";
-      
+      if (error.message?.includes("404")) errorMsg = "Error: Model not found. (Using gemini-1.5-flash)";
       setMessages(prev => [...prev, { role: 'ai', text: errorMsg }]);
     } finally {
       setIsLoading(false);
@@ -136,7 +123,7 @@ const QiMingChat: React.FC = () => {
 
   const toggleChat = () => {
     if (!isOpen) {
-      playGreeting(); // 打开时播放真人语音
+      playGreeting();
     }
     setIsOpen(!isOpen);
   };
