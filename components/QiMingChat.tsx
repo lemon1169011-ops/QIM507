@@ -1,93 +1,38 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { GoogleGenAI, Chat, Modality } from "@google/genai";
+import { GoogleGenAI, Chat } from "@google/genai"; // 注意：这里我去掉了 Modality，因为 1.5 Flash 调用方式略有不同，先简化为纯对话测试
 
 const QiMingChat: React.FC = () => {
   const [isOpen, setIsOpen] = useState(false);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   
-  // 这里的文字气泡也同步改成了英文，和语音内容一致
   const [messages, setMessages] = useState<{role: 'ai' | 'user', text: string}[]>([
     { role: 'ai', text: "Hi! I am Nova. If you are navigating any emotional challenges or just need to talk, I am here to support you." }
   ]);
   
   const scrollRef = useRef<HTMLDivElement>(null);
   const chatRef = useRef<Chat | null>(null);
-  const audioContextRef = useRef<AudioContext | null>(null);
 
+  // 自动滚动
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
   }, [messages, isLoading]);
 
-  const decodeBase64 = (base64: string) => {
-    const binaryString = atob(base64);
-    const len = binaryString.length;
-    const bytes = new Uint8Array(len);
-    for (let i = 0; i < len; i++) {
-      bytes[i] = binaryString.charCodeAt(i);
-    }
-    return bytes;
-  };
-
-  const decodeAudioData = async (data: Uint8Array, ctx: AudioContext): Promise<AudioBuffer> => {
-    const dataInt16 = new Int16Array(data.buffer);
-    const frameCount = dataInt16.length;
-    const buffer = ctx.createBuffer(1, frameCount, 24000);
-    const channelData = buffer.getChannelData(0);
-    for (let i = 0; i < frameCount; i++) {
-      channelData[i] = dataInt16[i] / 32768.0;
-    }
-    return buffer;
-  };
-
-  // --- 关键部分：英文 TTS 语音 ---
-  const playGreeting = async () => {
-    try {
-      if (!audioContextRef.current) {
-        audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
-      }
-      const ctx = audioContextRef.current;
-      if (ctx.state === 'suspended') await ctx.resume();
-
-      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-      const response = await ai.models.generateContent({
-        model: "gemini-2.5-flash-preview-tts",
-        contents: [{ 
-            parts: [{ 
-                // 这里是 Nova 实际会说的英文内容
-                text: "Hi! I am Nova. If you are navigating any emotional challenges, or just need to talk, I am here to support you." 
-            }] 
-        }],
-        config: {
-          responseModalities: [Modality.AUDIO],
-          speechConfig: {
-            // 使用 'Aoede' (比较自然的英文女声)，你也可以换成 'Kore'
-            voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Aoede' } },
-          },
-        },
-      });
-
-      const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
-      if (base64Audio) {
-        const audioBuffer = await decodeAudioData(decodeBase64(base64Audio), ctx);
-        const source = ctx.createBufferSource();
-        source.buffer = audioBuffer;
-        source.connect(ctx.destination);
-        source.start();
-      }
-    } catch (err) {
-      console.error("TTS Error:", err);
-    }
-  };
-
+  // 初始化聊天机器人 (使用最稳定的 gemini-1.5-flash)
   const initChat = () => {
     if (chatRef.current) return chatRef.current;
     
+    // 检查 API Key 是否存在
+    if (!process.env.API_KEY) {
+        console.error("API Key is missing!");
+        return null;
+    }
+    
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     chatRef.current = ai.chats.create({
-      model: 'gemini-2.0-flash-exp',
+      model: 'gemini-1.5-flash', // <--- 改成了最稳定的 1.5 Flash
       config: {
         systemInstruction: `You are Nova, an empathetic AI senior student mentor for high schoolers. 
         Your goal is to provide supportive, warm, and concise guidance on stress management.
@@ -107,22 +52,32 @@ const QiMingChat: React.FC = () => {
 
     try {
       const chat = initChat();
+      if (!chat) {
+          throw new Error("API Key missing or Chat init failed");
+      }
+      
       const response = await chat.sendMessage({ message: userMsg });
       const aiText = response.text || "I'm sorry, I'm having a bit of a space glitch. Could you repeat that?";
       setMessages(prev => [...prev, { role: 'ai', text: aiText }]);
-    } catch (error) {
+    } catch (error: any) {
       console.error("Gemini API Error:", error);
-      setMessages(prev => [...prev, { role: 'ai', text: "Connection lost. Please check your network." }]);
+      
+      // 更详细的错误提示
+      let errorMsg = "Connection lost. Please check your network.";
+      if (error.message?.includes("401")) errorMsg = "Error: Invalid API Key. Please check your settings.";
+      if (error.message?.includes("404")) errorMsg = "Error: Model not found. (Using gemini-1.5-flash)";
+      if (error.message?.includes("API Key missing")) errorMsg = "Error: API Key is missing in build.";
+      
+      setMessages(prev => [...prev, { role: 'ai', text: errorMsg }]);
     } finally {
       setIsLoading(false);
     }
   };
 
   const toggleChat = () => {
-    if (!isOpen) {
-      playGreeting(); // 打开聊天框时播放语音
-    }
     setIsOpen(!isOpen);
+    // 暂时先注释掉语音部分，先确保文字对话能通
+    // if (!isOpen) playGreeting(); 
   };
 
   return (
@@ -142,10 +97,7 @@ const QiMingChat: React.FC = () => {
                 </span>
               </div>
             </div>
-            <button 
-              onClick={(e) => { e.stopPropagation(); setIsOpen(false); }} 
-              className="text-white/80 hover:text-white p-1"
-            >
+            <button onClick={(e) => { e.stopPropagation(); setIsOpen(false); }} className="text-white/80 hover:text-white p-1">
               <i className="fas fa-times"></i>
             </button>
           </div>
@@ -178,33 +130,18 @@ const QiMingChat: React.FC = () => {
                 placeholder="Ask Nova anything..." 
                 className="flex-grow bg-white/5 border border-white/10 rounded-xl px-4 py-2 text-xs text-white focus:outline-none focus:ring-1 focus:ring-cyan-500 transition-all" 
               />
-              <button 
-                onClick={handleSend}
-                disabled={isLoading}
-                className={`bg-cyan-600 text-white p-2 rounded-xl transition-all ${isLoading ? 'opacity-50' : 'hover:bg-cyan-500'}`}
-              >
+              <button onClick={handleSend} disabled={isLoading} className={`bg-cyan-600 text-white p-2 rounded-xl transition-all ${isLoading ? 'opacity-50' : 'hover:bg-cyan-500'}`}>
                 <i className="fas fa-paper-plane text-xs"></i>
               </button>
             </div>
           </div>
         </div>
       ) : (
-        <button 
-          onClick={toggleChat}
-          className="w-16 h-16 rounded-full bg-cyan-600 text-white flex items-center justify-center text-2xl shadow-xl hover:scale-110 active:scale-95 transition-all relative group overflow-hidden"
-        >
+        <button onClick={toggleChat} className="w-16 h-16 rounded-full bg-cyan-600 text-white flex items-center justify-center text-2xl shadow-xl hover:scale-110 active:scale-95 transition-all relative group overflow-hidden">
           <div className="z-10 flex flex-col items-center">
-            <div className="flex gap-1.5 mb-1">
-              <div className="w-1.5 h-1.5 bg-white rounded-full animate-pulse"></div>
-              <div className="w-1.5 h-1.5 bg-white rounded-full animate-pulse delay-150"></div>
-            </div>
             <i className="fas fa-robot text-xl"></i>
           </div>
-          <div className="absolute inset-0 bg-gradient-to-tr from-cyan-400/30 to-transparent"></div>
-          
-          <span className="absolute -top-12 right-0 bg-white text-cyan-900 text-[10px] font-bold px-3 py-1.5 rounded-full opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap shadow-lg">
-            Chat with Nova
-          </span>
+          <span className="absolute -top-12 right-0 bg-white text-cyan-900 text-[10px] font-bold px-3 py-1.5 rounded-full opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap shadow-lg">Chat with Nova</span>
         </button>
       )}
     </div>
