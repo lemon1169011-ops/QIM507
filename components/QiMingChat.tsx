@@ -43,7 +43,6 @@ const QiMingChat: React.FC = () => {
   };
 
   // --- 关键修改：直接用 Fetch 请求 Gemini 2.0 的语音 ---
-  // (绕过 SDK 兼容性问题，直接拿好声音)
   const playGreeting = async () => {
     try {
       if (!audioContextRef.current) {
@@ -58,7 +57,6 @@ const QiMingChat: React.FC = () => {
         return;
       }
 
-      // 直接调用 REST API，不通过 SDK
       const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${apiKey}`;
       
       const response = await fetch(url, {
@@ -81,7 +79,6 @@ const QiMingChat: React.FC = () => {
 
       const data = await response.json();
 
-      // 如果返回错误，打印出来
       if (data.error) {
         console.error("Voice API Error:", data.error);
         return;
@@ -92,7 +89,7 @@ const QiMingChat: React.FC = () => {
       if (base64Audio) {
         const audioBuffer = await decodeAudioData(decodeBase64(base64Audio), ctx);
         const source = ctx.createBufferSource();
-        source.buffer = audioBuffer;
+        const source.buffer = audioBuffer;
         source.connect(ctx.destination);
         source.start();
       }
@@ -115,9 +112,7 @@ const QiMingChat: React.FC = () => {
       const apiKey = process.env.API_KEY || process.env.GEMINI_API_KEY;
       if (!apiKey) throw new Error("API Key missing");
 
-      // 使用稳定版 SDK
       const genAI = new GoogleGenerativeAI(apiKey);
-      // 使用最稳的模型 1.5-flash
       const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
 
       const chat = model.startChat({
@@ -160,6 +155,7 @@ const QiMingChat: React.FC = () => {
     <div className="fixed bottom-24 lg:bottom-10 right-6 z-[60]">
       {isOpen ? (
         <div className="glass-card w-80 md:w-96 h-[500px] rounded-2xl flex flex-col shadow-2xl border border-cyan-500/30 overflow-hidden animate-in slide-in-from-bottom-10">
+          {/* Header */}
           <div className="bg-cyan-600 p-4 flex justify-between items-center shadow-lg">
             <div className="flex items-center gap-3">
               <div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center border border-white/20">
@@ -181,6 +177,7 @@ const QiMingChat: React.FC = () => {
             </button>
           </div>
           
+          {/* Messages Area */}
           <div ref={scrollRef} className="flex-grow overflow-y-auto p-4 space-y-4 scroll-hide bg-slate-900/40 text-sm">
             {messages.map((m, i) => (
               <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
@@ -200,6 +197,7 @@ const QiMingChat: React.FC = () => {
             )}
           </div>
           
+          {/* Input Area */}
           <div className="p-4 border-t border-white/10 bg-black/20">
             <div className="flex gap-2">
               <input 
@@ -212,4 +210,24 @@ const QiMingChat: React.FC = () => {
               <button 
                 onClick={handleSend}
                 disabled={isLoading}
-                className
+                className="bg-cyan-600 hover:bg-cyan-500 text-white p-2 rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed w-10 flex items-center justify-center"
+              >
+                 <i className="fas fa-paper-plane"></i>
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : (
+        /* Floating Trigger Button (当聊天框关闭时显示这个) */
+        <button
+          onClick={toggleChat}
+          className="w-14 h-14 rounded-full bg-cyan-600 hover:bg-cyan-500 shadow-lg hover:shadow-cyan-500/50 flex items-center justify-center transition-all hover:scale-110 active:scale-95 group"
+        >
+          <i className="fas fa-comment-dots text-2xl text-white group-hover:rotate-12 transition-transform"></i>
+        </button>
+      )}
+    </div>
+  );
+};
+
+export default QiMingChat;
