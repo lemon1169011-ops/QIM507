@@ -1,82 +1,91 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import { GoogleGenAI } from "@google/genai";
 
 const QiMingChat: React.FC = () => {
   const [isOpen, setIsOpen] = useState(false);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   
+  // 初始对话
   const [messages, setMessages] = useState<{role: 'ai' | 'user', text: string}[]>([
     { role: 'ai', text: "Hi! I am Nova. If you are navigating any emotional challenges or just need to talk, I am here to support you." }
   ]);
   
   const scrollRef = useRef<HTMLDivElement>(null);
-  const chatSessionRef = useRef<any>(null);
+  const audioContextRef = useRef<AudioContext | null>(null);
 
-  // 自动滚动
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
   }, [messages, isLoading]);
 
-  // --- 🔊 声音处理：挑选最好听的语音 ---
-  const speakText = (text: string) => {
-    // 必须取消之前的发声，否则会卡顿
-    window.speechSynthesis.cancel();
-
-    const utterance = new SpeechSynthesisUtterance(text);
-    
-    // 1. 获取所有可用声音
-    const voices = window.speechSynthesis.getVoices();
-    
-    // 2. 优先寻找 "Google US English" 或 "Samantha" (这两个最自然)
-    const bestVoice = voices.find(v => 
-      v.name.includes("Google US English") || 
-      v.name.includes("Samantha") || 
-      v.name.includes("Microsoft Zira")
-    );
-
-    if (bestVoice) {
-      utterance.voice = bestVoice;
+  // --- 音频解码工具 ---
+  const decodeBase64 = (base64: string) => {
+    const binaryString = atob(base64);
+    const len = binaryString.length;
+    const bytes = new Uint8Array(len);
+    for (let i = 0; i < len; i++) {
+      bytes[i] = binaryString.charCodeAt(i);
     }
-
-    utterance.lang = 'en-US';
-    utterance.rate = 1.0;  // 语速正常
-    utterance.pitch = 1.05; // 稍微提一点语调，听起来更积极
-    utterance.volume = 1.0;
-
-    window.speechSynthesis.speak(utterance);
+    return bytes;
   };
 
-  // --- 💬 聊天初始化 (使用标准稳定版 SDK) ---
-  const getChatSession = async () => {
-    if (chatSessionRef.current) return chatSessionRef.current;
-
-    const apiKey = process.env.API_KEY || process.env.GEMINI_API_KEY;
-    if (!apiKey) {
-      throw new Error("API Key is missing in Settings.");
+  const decodeAudioData = async (data: Uint8Array, ctx: AudioContext): Promise<AudioBuffer> => {
+    const dataInt16 = new Int16Array(data.buffer);
+    const frameCount = dataInt16.length;
+    const buffer = ctx.createBuffer(1, frameCount, 24000);
+    const channelData = buffer.getChannelData(0);
+    for (let i = 0; i < frameCount; i++) {
+      channelData[i] = dataInt16[i] / 32768.0;
     }
-
-    // 使用最稳定的 gemini-1.5-flash 模型
-    const genAI = new GoogleGenerativeAI(apiKey);
-    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
-
-    chatSessionRef.current = model.startChat({
-      history: [
-        {
-          role: "user",
-          parts: [{ text: "You are Nova, a warm, empathetic AI mentor for students. Keep your answers concise (under 50 words) and supportive." }],
-        },
-        {
-          role: "model",
-          parts: [{ text: "Understood. I am Nova, ready to listen and support." }],
-        },
-      ],
-    });
-    return chatSessionRef.current;
+    return buffer;
   };
 
+  // --- 核心功能 1：播放真人开场白 (Voice Greeting) ---
+  const playGreeting = async () => {
+    try {
+      if (!audioContextRef.current) {
+        audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
+      }
+      const ctx = audioContextRef.current;
+      if (ctx.state === 'suspended') await ctx.resume();
+
+      const apiKey = process.env.API_KEY || process.env.GEMINI_API_KEY;
+      if (!apiKey) return;
+
+      const ai = new GoogleGenAI({ apiKey: apiKey });
+      
+      // 使用 2.0 Flash Exp 请求音频
+      const response = await ai.models.generateContent({
+        model: "gemini-2.0-flash-exp",
+        contents: [{ 
+            parts: [{ 
+                text: "Hi! I am Nova. If you are navigating any emotional challenges, or just need to talk, I am here to support you." 
+            }] 
+        }],
+        config: {
+          responseModalities: ["AUDIO"], // 请求音频
+          speechConfig: {
+            voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Aoede' } },
+          },
+        },
+      });
+
+      const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+      if (base64Audio) {
+        const audioBuffer = await decodeAudioData(decodeBase64(base64Audio), ctx);
+        const source = ctx.createBufferSource();
+        source.buffer = audioBuffer;
+        source.connect(ctx.destination);
+        source.start();
+      }
+    } catch (err) {
+      console.error("Voice Error:", err);
+    }
+  };
+
+  // --- 核心功能 2：智能聊天 (Smart Chat) ---
   const handleSend = async () => {
     if (!input.trim() || isLoading) return;
 
@@ -86,25 +95,40 @@ const QiMingChat: React.FC = () => {
     setIsLoading(true);
 
     try {
-      const chat = await getChatSession();
+      const apiKey = process.env.API_KEY || process.env.GEMINI_API_KEY;
+      if (!apiKey) throw new Error("API Key missing");
+
+      const ai = new GoogleGenAI({ apiKey: apiKey });
       
-      // 发送消息
-      const result = await chat.sendMessage(userMsg);
-      const response = await result.response;
-      const aiText = response.text();
+      // 关键修正：这里也用 2.0，但是不请求 AUDIO，只请求 TEXT
+      // 这样就不会报 "Model not found"，因为 SDK 和 Model 是匹配的！
+      const response = await ai.models.generateContent({
+        model: "gemini-2.0-flash-exp", 
+        contents: [
+            { role: "user", parts: [{ text: userMsg }] }
+        ],
+        config: {
+             // 简单的提示词，去掉复杂的 audio 配置，确保文字回复稳定
+            systemInstruction: "You are Nova, a helpful AI mentor. Keep answers short and supportive.",
+        }
+      });
+
+      // 提取文字回复
+      const aiText = response.candidates?.[0]?.content?.parts?.[0]?.text;
       
-      setMessages(prev => [...prev, { role: 'ai', text: aiText }]);
-      
-      // 收到消息后自动朗读
-      speakText(aiText);
+      if (aiText) {
+          setMessages(prev => [...prev, { role: 'ai', text: aiText }]);
+      } else {
+          // 如果 2.0 偶尔抽风没回文字
+          setMessages(prev => [...prev, { role: 'ai', text: "I'm listening. Could you say that again?" }]);
+      }
 
     } catch (error: any) {
       console.error("Chat Error:", error);
-      let errorMsg = "Connection error. Please try again.";
+      let errorMsg = "Connection lost. Please try again.";
       
-      // 错误诊断
-      if (error.message?.includes("404")) errorMsg = "Error: Model 'gemini-1.5-flash' not found. Check API Key.";
-      if (error.message?.includes("API key")) errorMsg = "Error: Invalid API Key.";
+      if (error.message?.includes("404")) errorMsg = "Error: Model 2.0 not found. Check API Key.";
+      if (error.message?.includes("401")) errorMsg = "Error: Invalid API Key.";
       
       setMessages(prev => [...prev, { role: 'ai', text: errorMsg }]);
     } finally {
@@ -114,8 +138,7 @@ const QiMingChat: React.FC = () => {
 
   const toggleChat = () => {
     if (!isOpen) {
-      // 打开时朗读欢迎语
-      speakText("Hi! I am Nova. I am here to support you.");
+      playGreeting(); // 打开时播放
     }
     setIsOpen(!isOpen);
   };
