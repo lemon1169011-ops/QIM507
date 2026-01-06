@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+// 引用稳定版 SDK，只用于聊天，保证不报错
 import { GoogleGenerativeAI } from "@google/generative-ai";
 
 const QiMingChat: React.FC = () => {
@@ -19,7 +20,7 @@ const QiMingChat: React.FC = () => {
     }
   }, [messages, isLoading]);
 
-  // --- 工具：解码音频 ---
+  // --- 音频解码工具 ---
   const decodeBase64 = (base64: string) => {
     const binaryString = atob(base64);
     const len = binaryString.length;
@@ -41,8 +42,8 @@ const QiMingChat: React.FC = () => {
     return buffer;
   };
 
-  // --- 核心 1：使用 HTTP 请求直接获取 Gemini 2.0 真人语音 ---
-  // (绕过 SDK 限制，直接拿好听的声音)
+  // --- 关键修改：直接用 Fetch 请求 Gemini 2.0 的语音 ---
+  // (绕过 SDK 兼容性问题，直接拿好声音)
   const playGreeting = async () => {
     try {
       if (!audioContextRef.current) {
@@ -52,11 +53,12 @@ const QiMingChat: React.FC = () => {
       if (ctx.state === 'suspended') await ctx.resume();
 
       const apiKey = process.env.API_KEY || process.env.GEMINI_API_KEY;
-      if (!apiKey) return;
+      if (!apiKey) {
+        console.error("API Key missing");
+        return;
+      }
 
-      console.log("Requesting Gemini 2.0 Voice via Direct API...");
-
-      // 直接向 Google API 发送请求
+      // 直接调用 REST API，不通过 SDK
       const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${apiKey}`;
       
       const response = await fetch(url, {
@@ -79,7 +81,12 @@ const QiMingChat: React.FC = () => {
 
       const data = await response.json();
 
-      // 解析返回的音频数据
+      // 如果返回错误，打印出来
+      if (data.error) {
+        console.error("Voice API Error:", data.error);
+        return;
+      }
+
       const base64Audio = data.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
       
       if (base64Audio) {
@@ -88,17 +95,14 @@ const QiMingChat: React.FC = () => {
         source.buffer = audioBuffer;
         source.connect(ctx.destination);
         source.start();
-      } else {
-        console.warn("No audio data found in response:", data);
       }
 
     } catch (err) {
-      console.error("Voice Error:", err);
+      console.error("Voice Fetch Error:", err);
     }
   };
 
-  // --- 核心 2：使用稳定版 SDK 进行聊天 ---
-  // (保证 100% 不报错)
+  // --- 聊天功能：使用稳定版 SDK (Gemini 1.5 Flash) ---
   const handleSend = async () => {
     if (!input.trim() || isLoading) return;
 
@@ -111,8 +115,9 @@ const QiMingChat: React.FC = () => {
       const apiKey = process.env.API_KEY || process.env.GEMINI_API_KEY;
       if (!apiKey) throw new Error("API Key missing");
 
-      // 使用稳定版 SDK 和稳定的 1.5-flash 模型
+      // 使用稳定版 SDK
       const genAI = new GoogleGenerativeAI(apiKey);
+      // 使用最稳的模型 1.5-flash
       const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
 
       const chat = model.startChat({
@@ -146,7 +151,7 @@ const QiMingChat: React.FC = () => {
 
   const toggleChat = () => {
     if (!isOpen) {
-      playGreeting(); // 打开时播放真人语音
+      playGreeting(); // 打开时播放语音
     }
     setIsOpen(!isOpen);
   };
@@ -207,34 +212,4 @@ const QiMingChat: React.FC = () => {
               <button 
                 onClick={handleSend}
                 disabled={isLoading}
-                className={`bg-cyan-600 text-white p-2 rounded-xl transition-all ${isLoading ? 'opacity-50' : 'hover:bg-cyan-500'}`}
-              >
-                <i className="fas fa-paper-plane text-xs"></i>
-              </button>
-            </div>
-          </div>
-        </div>
-      ) : (
-        <button 
-          onClick={toggleChat}
-          className="w-16 h-16 rounded-full bg-cyan-600 text-white flex items-center justify-center text-2xl shadow-xl hover:scale-110 active:scale-95 transition-all relative group overflow-hidden"
-        >
-          <div className="z-10 flex flex-col items-center">
-            <div className="flex gap-1.5 mb-1">
-              <div className="w-1.5 h-1.5 bg-white rounded-full animate-pulse"></div>
-              <div className="w-1.5 h-1.5 bg-white rounded-full animate-pulse delay-150"></div>
-            </div>
-            <i className="fas fa-robot text-xl"></i>
-          </div>
-          <div className="absolute inset-0 bg-gradient-to-tr from-cyan-400/30 to-transparent"></div>
-          
-          <span className="absolute -top-12 right-0 bg-white text-cyan-900 text-[10px] font-bold px-3 py-1.5 rounded-full opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap shadow-lg">
-            Chat with Nova
-          </span>
-        </button>
-      )}
-    </div>
-  );
-};
-
-export default QiMingChat;
+                className
