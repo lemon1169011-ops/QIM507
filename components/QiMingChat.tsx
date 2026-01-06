@@ -1,5 +1,4 @@
 import React, { useState, useRef, useEffect } from 'react';
-// 引用稳定版 SDK，只用于聊天，保证不报错
 import { GoogleGenerativeAI } from "@google/generative-ai";
 
 const QiMingChat: React.FC = () => {
@@ -20,7 +19,7 @@ const QiMingChat: React.FC = () => {
     }
   }, [messages, isLoading]);
 
-  // --- 音频解码工具 ---
+  // --- 工具函数：Base64 转 Byte ---
   const decodeBase64 = (base64: string) => {
     const binaryString = atob(base64);
     const len = binaryString.length;
@@ -31,6 +30,7 @@ const QiMingChat: React.FC = () => {
     return bytes;
   };
 
+  // --- 工具函数：音频解码 ---
   const decodeAudioData = async (data: Uint8Array, ctx: AudioContext): Promise<AudioBuffer> => {
     const dataInt16 = new Int16Array(data.buffer);
     const frameCount = dataInt16.length;
@@ -42,7 +42,7 @@ const QiMingChat: React.FC = () => {
     return buffer;
   };
 
-  // --- 关键修改：直接用 Fetch 请求 Gemini 2.0 的语音 ---
+  // --- 播放欢迎语音 ---
   const playGreeting = async () => {
     try {
       if (!audioContextRef.current) {
@@ -99,7 +99,7 @@ const QiMingChat: React.FC = () => {
     }
   };
 
-  // --- 聊天功能：使用稳定版 SDK (Gemini 1.5 Flash) ---
+  // --- 发送消息处理 ---
   const handleSend = async () => {
     if (!input.trim() || isLoading) return;
 
@@ -146,11 +146,12 @@ const QiMingChat: React.FC = () => {
 
   const toggleChat = () => {
     if (!isOpen) {
-      playGreeting(); // 打开时播放语音
+      playGreeting(); 
     }
     setIsOpen(!isOpen);
   };
 
+  // --- 界面渲染 ---
   return (
     <div className="fixed bottom-24 lg:bottom-10 right-6 z-[60]">
       {isOpen ? (
@@ -218,7 +219,7 @@ const QiMingChat: React.FC = () => {
           </div>
         </div>
       ) : (
-        /* Floating Trigger Button (当聊天框关闭时显示这个) */
+        /* Floating Button */
         <button
           onClick={toggleChat}
           className="w-14 h-14 rounded-full bg-cyan-600 hover:bg-cyan-500 shadow-lg hover:shadow-cyan-500/50 flex items-center justify-center transition-all hover:scale-110 active:scale-95 group"
