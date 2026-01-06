@@ -2,10 +2,28 @@
 @tailwind components;
 @tailwind utilities;
 
-/* 这里可以加一些全局样式，防止白色背景 */
+/* 全局星空背景样式 */
 body {
-    background: radial-gradient(circle at center, #1a1a2e 0%, #0f0f1a 100%);
-    color: #e0e0e0;
-    font-family: 'Noto Sans SC', sans-serif;
-    min-height: 100vh;
+  margin: 0;
+  padding: 0;
+  background: radial-gradient(circle at center, #1a1a2e 0%, #0f0f1a 100%);
+  color: #e0e0e0;
+  font-family: 'Noto Sans SC', sans-serif;
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* 滚动条美化 (可选) */
+::-webkit-scrollbar {
+  width: 8px;
+}
+::-webkit-scrollbar-track {
+  background: #0f0f1a;
+}
+::-webkit-scrollbar-thumb {
+  background: #334155;
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #475569;
 }
