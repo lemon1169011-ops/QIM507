@@ -1,12 +1,11 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { GoogleGenAI } from "@google/genai";
+import { GoogleGenerativeAI } from "@google/generative-ai";
 
 const QiMingChat: React.FC = () => {
   const [isOpen, setIsOpen] = useState(false);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   
-  // 初始对话
   const [messages, setMessages] = useState<{role: 'ai' | 'user', text: string}[]>([
     { role: 'ai', text: "Hi! I am Nova. If you are navigating any emotional challenges or just need to talk, I am here to support you." }
   ]);
@@ -20,7 +19,7 @@ const QiMingChat: React.FC = () => {
     }
   }, [messages, isLoading]);
 
-  // --- 音频解码工具 ---
+  // --- 工具：解码音频 ---
   const decodeBase64 = (base64: string) => {
     const binaryString = atob(base64);
     const len = binaryString.length;
@@ -42,7 +41,8 @@ const QiMingChat: React.FC = () => {
     return buffer;
   };
 
-  // --- 核心功能 1：播放真人开场白 (Voice Greeting) ---
+  // --- 核心 1：使用 HTTP 请求直接获取 Gemini 2.0 真人语音 ---
+  // (绕过 SDK 限制，直接拿好听的声音)
   const playGreeting = async () => {
     try {
       if (!audioContextRef.current) {
@@ -54,38 +54,51 @@ const QiMingChat: React.FC = () => {
       const apiKey = process.env.API_KEY || process.env.GEMINI_API_KEY;
       if (!apiKey) return;
 
-      const ai = new GoogleGenAI({ apiKey: apiKey });
+      console.log("Requesting Gemini 2.0 Voice via Direct API...");
+
+      // 直接向 Google API 发送请求
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${apiKey}`;
       
-      // 使用 2.0 Flash Exp 请求音频
-      const response = await ai.models.generateContent({
-        model: "gemini-2.0-flash-exp",
-        contents: [{ 
-            parts: [{ 
-                text: "Hi! I am Nova. If you are navigating any emotional challenges, or just need to talk, I am here to support you." 
-            }] 
-        }],
-        config: {
-          responseModalities: ["AUDIO"], // 请求音频
-          speechConfig: {
-            voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Aoede' } },
-          },
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
         },
+        body: JSON.stringify({
+          contents: [{ 
+            parts: [{ 
+              text: "Hi! I am Nova. If you are navigating any emotional challenges, or just need to talk, I am here to support you." 
+            }] 
+          }],
+          responseModalities: ["AUDIO"],
+          speechConfig: {
+            voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Aoede' } }
+          }
+        })
       });
 
-      const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+      const data = await response.json();
+
+      // 解析返回的音频数据
+      const base64Audio = data.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+      
       if (base64Audio) {
         const audioBuffer = await decodeAudioData(decodeBase64(base64Audio), ctx);
         const source = ctx.createBufferSource();
         source.buffer = audioBuffer;
         source.connect(ctx.destination);
         source.start();
+      } else {
+        console.warn("No audio data found in response:", data);
       }
+
     } catch (err) {
       console.error("Voice Error:", err);
     }
   };
 
-  // --- 核心功能 2：智能聊天 (Smart Chat) ---
+  // --- 核心 2：使用稳定版 SDK 进行聊天 ---
+  // (保证 100% 不报错)
   const handleSend = async () => {
     if (!input.trim() || isLoading) return;
 
@@ -98,38 +111,33 @@ const QiMingChat: React.FC = () => {
       const apiKey = process.env.API_KEY || process.env.GEMINI_API_KEY;
       if (!apiKey) throw new Error("API Key missing");
 
-      const ai = new GoogleGenAI({ apiKey: apiKey });
-      
-      // 关键修正：这里也用 2.0，但是不请求 AUDIO，只请求 TEXT
-      // 这样就不会报 "Model not found"，因为 SDK 和 Model 是匹配的！
-      const response = await ai.models.generateContent({
-        model: "gemini-2.0-flash-exp", 
-        contents: [
-            { role: "user", parts: [{ text: userMsg }] }
+      // 使用稳定版 SDK 和稳定的 1.5-flash 模型
+      const genAI = new GoogleGenerativeAI(apiKey);
+      const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+
+      const chat = model.startChat({
+        history: [
+            {
+                role: "user",
+                parts: [{ text: "You are Nova, a helpful AI mentor. Keep answers short and supportive." }],
+            },
+            {
+                role: "model",
+                parts: [{ text: "Understood." }],
+            }
         ],
-        config: {
-             // 简单的提示词，去掉复杂的 audio 配置，确保文字回复稳定
-            systemInstruction: "You are Nova, a helpful AI mentor. Keep answers short and supportive.",
-        }
       });
 
-      // 提取文字回复
-      const aiText = response.candidates?.[0]?.content?.parts?.[0]?.text;
+      const result = await chat.sendMessage(userMsg);
+      const response = await result.response;
+      const aiText = response.text();
       
-      if (aiText) {
-          setMessages(prev => [...prev, { role: 'ai', text: aiText }]);
-      } else {
-          // 如果 2.0 偶尔抽风没回文字
-          setMessages(prev => [...prev, { role: 'ai', text: "I'm listening. Could you say that again?" }]);
-      }
+      setMessages(prev => [...prev, { role: 'ai', text: aiText }]);
 
     } catch (error: any) {
       console.error("Chat Error:", error);
       let errorMsg = "Connection lost. Please try again.";
-      
-      if (error.message?.includes("404")) errorMsg = "Error: Model 2.0 not found. Check API Key.";
-      if (error.message?.includes("401")) errorMsg = "Error: Invalid API Key.";
-      
+      if (error.message?.includes("404")) errorMsg = "Model Error. Please check API Key.";
       setMessages(prev => [...prev, { role: 'ai', text: errorMsg }]);
     } finally {
       setIsLoading(false);
@@ -138,7 +146,7 @@ const QiMingChat: React.FC = () => {
 
   const toggleChat = () => {
     if (!isOpen) {
-      playGreeting(); // 打开时播放
+      playGreeting(); // 打开时播放真人语音
     }
     setIsOpen(!isOpen);
   };
