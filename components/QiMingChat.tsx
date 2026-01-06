@@ -1,38 +1,113 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { GoogleGenAI, Chat } from "@google/genai"; // 注意：这里我去掉了 Modality，因为 1.5 Flash 调用方式略有不同，先简化为纯对话测试
+import { GoogleGenAI } from "@google/genai";
 
 const QiMingChat: React.FC = () => {
   const [isOpen, setIsOpen] = useState(false);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   
+  // 这里的文字是英文的，和语音内容保持一致
   const [messages, setMessages] = useState<{role: 'ai' | 'user', text: string}[]>([
     { role: 'ai', text: "Hi! I am Nova. If you are navigating any emotional challenges or just need to talk, I am here to support you." }
   ]);
   
   const scrollRef = useRef<HTMLDivElement>(null);
-  const chatRef = useRef<Chat | null>(null);
+  const chatRef = useRef<any>(null);
+  const audioContextRef = useRef<AudioContext | null>(null);
 
-  // 自动滚动
+  // 自动滚动到底部
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
   }, [messages, isLoading]);
 
-  // 初始化聊天机器人 (使用最稳定的 gemini-1.5-flash)
+  // --- 音频处理工具函数 ---
+  const decodeBase64 = (base64: string) => {
+    const binaryString = atob(base64);
+    const len = binaryString.length;
+    const bytes = new Uint8Array(len);
+    for (let i = 0; i < len; i++) {
+      bytes[i] = binaryString.charCodeAt(i);
+    }
+    return bytes;
+  };
+
+  const decodeAudioData = async (data: Uint8Array, ctx: AudioContext): Promise<AudioBuffer> => {
+    const dataInt16 = new Int16Array(data.buffer);
+    const frameCount = dataInt16.length;
+    const buffer = ctx.createBuffer(1, frameCount, 24000);
+    const channelData = buffer.getChannelData(0);
+    for (let i = 0; i < frameCount; i++) {
+      channelData[i] = dataInt16[i] / 32768.0;
+    }
+    return buffer;
+  };
+
+  // --- 关键修改 1：语音播放 (带备用方案) ---
+  const playGreeting = async () => {
+    // 1. 尝试初始化音频上下文 (浏览器要求必须在用户点击后触发)
+    try {
+      if (!audioContextRef.current) {
+        audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
+      }
+      const ctx = audioContextRef.current;
+      if (ctx.state === 'suspended') await ctx.resume();
+
+      // 2. 尝试使用 Gemini 2.0 模型生成真人语音
+      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+      const response = await ai.models.generateContent({
+        model: "gemini-2.0-flash-exp", // 这是一个支持音频输出的模型
+        contents: [{ 
+            parts: [{ 
+                text: "Hi! I am Nova. If you are navigating any emotional challenges, or just need to talk, I am here to support you." 
+            }] 
+        }],
+        config: {
+          responseModalities: ["AUDIO"], // 请求音频
+          speechConfig: {
+            voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Aoede' } },
+          },
+        },
+      });
+
+      // 3. 播放 Gemini 生成的音频
+      const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+      if (base64Audio) {
+        const audioBuffer = await decodeAudioData(decodeBase64(base64Audio), ctx);
+        const source = ctx.createBufferSource();
+        source.buffer = audioBuffer;
+        source.connect(ctx.destination);
+        source.start();
+        console.log("Gemini Voice playing...");
+      } else {
+        throw new Error("No audio data received");
+      }
+
+    } catch (err) {
+      console.warn("Gemini TTS failed, switching to Browser TTS:", err);
+      // --- 备用方案：如果 Gemini 语音失败，使用浏览器自带语音 ---
+      const utterance = new SpeechSynthesisUtterance("Hi! I am Nova. If you are navigating any emotional challenges, or just need to talk, I am here to support you.");
+      utterance.lang = 'en-US';
+      utterance.rate = 1.0;
+      utterance.pitch = 1.1;
+      window.speechSynthesis.speak(utterance);
+    }
+  };
+
+  // --- 关键修改 2：聊天初始化 (使用最稳定的 1.5 Flash) ---
   const initChat = () => {
     if (chatRef.current) return chatRef.current;
     
-    // 检查 API Key 是否存在
+    // 检查 Key 是否存在
     if (!process.env.API_KEY) {
-        console.error("API Key is missing!");
+        console.error("API Key is missing! Check deploy.yml settings.");
         return null;
     }
     
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     chatRef.current = ai.chats.create({
-      model: 'gemini-1.5-flash', // <--- 改成了最稳定的 1.5 Flash
+      model: 'gemini-1.5-flash', // <--- 这里改成了最稳定的 1.5 Flash，修复聊天报错
       config: {
         systemInstruction: `You are Nova, an empathetic AI senior student mentor for high schoolers. 
         Your goal is to provide supportive, warm, and concise guidance on stress management.
@@ -52,21 +127,21 @@ const QiMingChat: React.FC = () => {
 
     try {
       const chat = initChat();
-      if (!chat) {
-          throw new Error("API Key missing or Chat init failed");
-      }
+      if (!chat) throw new Error("Chat init failed (Missing Key?)");
       
       const response = await chat.sendMessage({ message: userMsg });
-      const aiText = response.text || "I'm sorry, I'm having a bit of a space glitch. Could you repeat that?";
+      const aiText = response.text || "I'm listening, please go on.";
       setMessages(prev => [...prev, { role: 'ai', text: aiText }]);
     } catch (error: any) {
-      console.error("Gemini API Error:", error);
-      
-      // 更详细的错误提示
+      console.error("Gemini API Error details:", error);
       let errorMsg = "Connection lost. Please check your network.";
-      if (error.message?.includes("401")) errorMsg = "Error: Invalid API Key. Please check your settings.";
-      if (error.message?.includes("404")) errorMsg = "Error: Model not found. (Using gemini-1.5-flash)";
-      if (error.message?.includes("API Key missing")) errorMsg = "Error: API Key is missing in build.";
+      
+      // 更加友好的错误提示，方便你排查
+      if (error.message?.includes("401") || error.message?.includes("API Key")) {
+        errorMsg = "Config Error: API Key not valid.";
+      } else if (error.message?.includes("404")) {
+        errorMsg = "Error: AI Model not found. Please update code.";
+      }
       
       setMessages(prev => [...prev, { role: 'ai', text: errorMsg }]);
     } finally {
@@ -75,9 +150,11 @@ const QiMingChat: React.FC = () => {
   };
 
   const toggleChat = () => {
+    if (!isOpen) {
+      // 打开窗口时尝试播放欢迎语
+      playGreeting();
+    }
     setIsOpen(!isOpen);
-    // 暂时先注释掉语音部分，先确保文字对话能通
-    // if (!isOpen) playGreeting(); 
   };
 
   return (
@@ -97,7 +174,10 @@ const QiMingChat: React.FC = () => {
                 </span>
               </div>
             </div>
-            <button onClick={(e) => { e.stopPropagation(); setIsOpen(false); }} className="text-white/80 hover:text-white p-1">
+            <button 
+              onClick={(e) => { e.stopPropagation(); setIsOpen(false); }} 
+              className="text-white/80 hover:text-white p-1"
+            >
               <i className="fas fa-times"></i>
             </button>
           </div>
@@ -130,18 +210,33 @@ const QiMingChat: React.FC = () => {
                 placeholder="Ask Nova anything..." 
                 className="flex-grow bg-white/5 border border-white/10 rounded-xl px-4 py-2 text-xs text-white focus:outline-none focus:ring-1 focus:ring-cyan-500 transition-all" 
               />
-              <button onClick={handleSend} disabled={isLoading} className={`bg-cyan-600 text-white p-2 rounded-xl transition-all ${isLoading ? 'opacity-50' : 'hover:bg-cyan-500'}`}>
+              <button 
+                onClick={handleSend}
+                disabled={isLoading}
+                className={`bg-cyan-600 text-white p-2 rounded-xl transition-all ${isLoading ? 'opacity-50' : 'hover:bg-cyan-500'}`}
+              >
                 <i className="fas fa-paper-plane text-xs"></i>
               </button>
             </div>
           </div>
         </div>
       ) : (
-        <button onClick={toggleChat} className="w-16 h-16 rounded-full bg-cyan-600 text-white flex items-center justify-center text-2xl shadow-xl hover:scale-110 active:scale-95 transition-all relative group overflow-hidden">
+        <button 
+          onClick={toggleChat}
+          className="w-16 h-16 rounded-full bg-cyan-600 text-white flex items-center justify-center text-2xl shadow-xl hover:scale-110 active:scale-95 transition-all relative group overflow-hidden"
+        >
           <div className="z-10 flex flex-col items-center">
+            <div className="flex gap-1.5 mb-1">
+              <div className="w-1.5 h-1.5 bg-white rounded-full animate-pulse"></div>
+              <div className="w-1.5 h-1.5 bg-white rounded-full animate-pulse delay-150"></div>
+            </div>
             <i className="fas fa-robot text-xl"></i>
           </div>
-          <span className="absolute -top-12 right-0 bg-white text-cyan-900 text-[10px] font-bold px-3 py-1.5 rounded-full opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap shadow-lg">Chat with Nova</span>
+          <div className="absolute inset-0 bg-gradient-to-tr from-cyan-400/30 to-transparent"></div>
+          
+          <span className="absolute -top-12 right-0 bg-white text-cyan-900 text-[10px] font-bold px-3 py-1.5 rounded-full opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap shadow-lg">
+            Chat with Nova
+          </span>
         </button>
       )}
     </div>
