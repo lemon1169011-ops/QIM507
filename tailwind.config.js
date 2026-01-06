@@ -2,8 +2,9 @@
 export default {
   content: [
     "./index.html",
-    "./src/**/*.{js,ts,jsx,tsx}", // 扫描 src 文件夹下的所有代码
-    "./*.{js,ts,jsx,tsx}"         // 扫描根目录下的代码 (比如 App.tsx)
+    "./*.{js,ts,jsx,tsx}",           // 关键！扫描根目录下的 App.tsx, index.tsx
+    "./components/**/*.{js,ts,jsx,tsx}", // 关键！扫描 components 文件夹
+    "./pages/**/*.{js,ts,jsx,tsx}"      // 关键！扫描 pages 文件夹
   ],
   theme: {
     extend: {
