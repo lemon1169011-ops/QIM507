@@ -88,41 +88,66 @@ const QiMingChat: React.FC = () => {
     }
   };
 
-  // --- 6. 发送消息逻辑 (Gemini 1.5 Flash) ---
+ // --- 6. 发送消息逻辑 (调试版: 使用 Gemini 2.0 并增加弹窗报错) ---
   const handleSend = async () => {
-    if (!input.trim() || isLoading) return;
+    // 1. 基础检查
+    if (!input.trim()) return;
+    if (isLoading) {
+      alert("请等待上一条消息回复完毕 / Please wait...");
+      return;
+    }
 
     const userMessage = input.trim();
-    setInput('');
+    setInput(''); // 清空输入框
+    
+    // 立即显示用户的消息
     setMessages(prev => [...prev, { role: 'user', text: userMessage }]);
     setIsLoading(true);
 
     try {
       const apiKey = process.env.NEXT_PUBLIC_GEMINI_API_KEY;
-      const response = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            contents: [{ parts: [{ text: userMessage }] }]
-          })
-        }
-      );
+      
+      // 检查 API Key 是否存在
+      if (!apiKey) {
+        throw new Error("找不到 API Key，请检查 .env 文件");
+      }
+
+      // 【修改点】尝试使用与语音功能相同的 Gemini 2.0 模型，因为确定它在你那边是可用的
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${apiKey}`;
+
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: userMessage }] }]
+        })
+      });
+
+      // 检查 HTTP 状态
+      if (!response.ok) {
+        const errorData = await response.text(); // 获取详细错误信息
+        console.error("API Error Details:", errorData);
+        throw new Error(`API 请求失败: ${response.status} - ${response.statusText}`);
+      }
 
       const data = await response.json();
-      const aiResponse = data.candidates?.[0]?.content?.parts?.[0]?.text || "Sorry, I couldn't understand that.";
+      const aiResponse = data.candidates?.[0]?.content?.parts?.[0]?.text;
+
+      if (!aiResponse) {
+        throw new Error("API 返回了空内容");
+      }
 
       setMessages(prev => [...prev, { role: 'ai', text: aiResponse }]);
 
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error sending message:", error);
-      setMessages(prev => [...prev, { role: 'ai', text: "Sorry, something went wrong. Please try again." }]);
+      // 直接弹窗告诉你错误原因
+      alert(`发送失败: ${error.message}`);
+      setMessages(prev => [...prev, { role: 'ai', text: "Sorry, connection failed. Please check your network or API Key." }]);
     } finally {
       setIsLoading(false);
     }
   };
-
   // --- 7. 切换聊天窗口 ---
   const toggleChat = () => {
     if (!isOpen) {
