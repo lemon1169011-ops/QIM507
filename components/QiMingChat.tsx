@@ -5,15 +5,16 @@ const QiMingChat: React.FC = () => {
   const [isOpen, setIsOpen] = useState(false);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  
+  // 这里的文字气泡也同步改成了英文，和语音内容一致
   const [messages, setMessages] = useState<{role: 'ai' | 'user', text: string}[]>([
-    { role: 'ai', text: 'Hi! 这里是 Nova，有任何情绪问题都可以找我寻求帮助哦。' }
+    { role: 'ai', text: "Hi! I am Nova. If you are navigating any emotional challenges or just need to talk, I am here to support you." }
   ]);
   
   const scrollRef = useRef<HTMLDivElement>(null);
   const chatRef = useRef<Chat | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
 
-  // 自动滚动到底部
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
@@ -41,7 +42,7 @@ const QiMingChat: React.FC = () => {
     return buffer;
   };
 
-  // --- 关键修改：播放中文语音欢迎语 ---
+  // --- 关键部分：英文 TTS 语音 ---
   const playGreeting = async () => {
     try {
       if (!audioContextRef.current) {
@@ -52,17 +53,17 @@ const QiMingChat: React.FC = () => {
 
       const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
       const response = await ai.models.generateContent({
-        model: "gemini-2.5-flash-preview-tts", // 使用支持 TTS 的模型
+        model: "gemini-2.5-flash-preview-tts",
         contents: [{ 
             parts: [{ 
-                // 这里修改成了你想要的中文内容
-                text: "Hi! 这里是 Nova，有任何情绪问题都可以找我寻求帮助哦。" 
+                // 这里是 Nova 实际会说的英文内容
+                text: "Hi! I am Nova. If you are navigating any emotional challenges, or just need to talk, I am here to support you." 
             }] 
         }],
         config: {
           responseModalities: [Modality.AUDIO],
           speechConfig: {
-            // 'Aoede' (女性声音) 通常对多语言支持较好，如果不喜欢可以换回 'Kore'
+            // 使用 'Aoede' (比较自然的英文女声)，你也可以换成 'Kore'
             voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Aoede' } },
           },
         },
@@ -86,7 +87,7 @@ const QiMingChat: React.FC = () => {
     
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     chatRef.current = ai.chats.create({
-      model: 'gemini-2.0-flash-exp', // 建议升级到更快的 2.0 模型用于对话
+      model: 'gemini-2.0-flash-exp',
       config: {
         systemInstruction: `You are Nova, an empathetic AI senior student mentor for high schoolers. 
         Your goal is to provide supportive, warm, and concise guidance on stress management.
@@ -107,20 +108,19 @@ const QiMingChat: React.FC = () => {
     try {
       const chat = initChat();
       const response = await chat.sendMessage({ message: userMsg });
-      const aiText = response.text || "抱歉，我的信号好像断了一下，请再说一遍好吗？";
+      const aiText = response.text || "I'm sorry, I'm having a bit of a space glitch. Could you repeat that?";
       setMessages(prev => [...prev, { role: 'ai', text: aiText }]);
     } catch (error) {
       console.error("Gemini API Error:", error);
-      setMessages(prev => [...prev, { role: 'ai', text: "连接中断，请检查网络设置。" }]);
+      setMessages(prev => [...prev, { role: 'ai', text: "Connection lost. Please check your network." }]);
     } finally {
       setIsLoading(false);
     }
   };
 
   const toggleChat = () => {
-    // 如果是打开聊天窗口，则播放语音
     if (!isOpen) {
-      playGreeting();
+      playGreeting(); // 打开聊天框时播放语音
     }
     setIsOpen(!isOpen);
   };
@@ -175,7 +175,7 @@ const QiMingChat: React.FC = () => {
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && handleSend()}
-                placeholder="和 Nova 聊聊..." 
+                placeholder="Ask Nova anything..." 
                 className="flex-grow bg-white/5 border border-white/10 rounded-xl px-4 py-2 text-xs text-white focus:outline-none focus:ring-1 focus:ring-cyan-500 transition-all" 
               />
               <button 
