@@ -20,15 +20,21 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+      
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: "20"
-          # cache: 'npm' <--- 我把这一行删掉了，就不会报错了
+      
       - name: Install dependencies
         run: npm install
+        
+      # 关键修复：这里加入了 API Key，声音才能正常工作
       - name: Build
         run: npm run build
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
