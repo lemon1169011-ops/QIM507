@@ -1,7 +1,7 @@
-
-import React from 'react';import './index.css'
+import React from 'react';
 import ReactDOM from 'react-dom/client';
-import App from './App';
+import App from './App.tsx';
+import './index.css'; // <--- 关键！这一行必须有，且建议单独一行
 
 const rootElement = document.getElementById('root');
 if (!rootElement) {
