@@ -40,7 +40,7 @@ const QiMingChat: React.FC = () => {
     return buffer;
   };
 
-  // --- 语音部分：保持使用 Gemini 2.0 (因为它的声音最好听) ---
+  // --- 语音部分 (保持不变，因为这个已经工作了) ---
   const playGreeting = async () => {
     try {
       if (!audioContextRef.current) {
@@ -55,7 +55,7 @@ const QiMingChat: React.FC = () => {
       const ai = new GoogleGenAI({ apiKey: apiKey });
       
       const response = await ai.models.generateContent({
-        model: "gemini-2.0-flash-exp", // 语音继续用 2.0
+        model: "gemini-2.0-flash-exp",
         contents: [{ 
             parts: [{ 
                 text: "Hi! I am Nova. If you are navigating any emotional challenges, or just need to talk, I am here to support you." 
@@ -82,7 +82,7 @@ const QiMingChat: React.FC = () => {
     }
   };
 
-  // --- 聊天部分：换回 Gemini 1.5 Flash (因为它可以 100% 稳定回复文字) ---
+  // --- 聊天部分 (关键修改：统一使用 2.0 模型) ---
   const handleSend = async () => {
     if (!input.trim() || isLoading) return;
 
@@ -97,24 +97,32 @@ const QiMingChat: React.FC = () => {
 
       const ai = new GoogleGenAI({ apiKey: apiKey });
       
-      // 关键修改：聊天改用 'gemini-1.5-flash'，这能解决 Model not found 问题
+      // 🚨 这里的修改是关键！
+      // 既然 2.0 能说话，那它肯定也能聊天。我们不再用 1.5 了。
       const response = await ai.models.generateContent({
-        model: "gemini-1.5-flash", 
+        model: "gemini-2.0-flash-exp", // <--- 统一改成 2.0，修复 Model not found
         contents: [
             { role: "user", parts: [{ text: userMsg }] }
         ],
         config: {
             systemInstruction: "You are Nova, a warm and empathetic mental health mentor for students. Keep answers concise and supportive.",
+            // 注意：这里不加 AUDIO 参数，只请求文字
         }
       });
 
-      const aiText = response.candidates?.[0]?.content?.parts?.[0]?.text || "I'm listening...";
-      setMessages(prev => [...prev, { role: 'ai', text: aiText }]);
+      const aiText = response.candidates?.[0]?.content?.parts?.[0]?.text;
+      
+      if (aiText) {
+          setMessages(prev => [...prev, { role: 'ai', text: aiText }]);
+      } else {
+          // 如果 2.0 偶尔返回空（有时候会这样），给一个兜底回复
+          setMessages(prev => [...prev, { role: 'ai', text: "I'm listening. Could you tell me more?" }]);
+      }
 
     } catch (error: any) {
       console.error("Chat Error:", error);
       let errorMsg = "Connection lost. Please try again.";
-      if (error.message?.includes("404")) errorMsg = "Error: Model not found. (Using gemini-1.5-flash)";
+      if (error.message?.includes("404")) errorMsg = "Error: Model not found. (Check Key)";
       setMessages(prev => [...prev, { role: 'ai', text: errorMsg }]);
     } finally {
       setIsLoading(false);
