@@ -19,6 +19,23 @@ const QiMingChat: React.FC = () => {
     }
   }, [messages, isLoading]);
 
+  // --- 工具：浏览器自带语音 (备用方案) ---
+  const speakWithBrowser = (text: string) => {
+    console.log("Switching to Browser TTS...");
+    window.speechSynthesis.cancel(); // 停止之前的
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.lang = 'en-US';
+    utterance.rate = 1.0;
+    
+    // 尝试找一个好听点的女声
+    const voices = window.speechSynthesis.getVoices();
+    const preferred = voices.find(v => v.name.includes('Google US English') || v.name.includes('Samantha'));
+    if (preferred) utterance.voice = preferred;
+    
+    window.speechSynthesis.speak(utterance);
+  };
+
+  // --- 工具：解码音频 ---
   const decodeBase64 = (base64: string) => {
     const binaryString = atob(base64);
     const len = binaryString.length;
@@ -40,9 +57,12 @@ const QiMingChat: React.FC = () => {
     return buffer;
   };
 
-  // --- 语音部分 (保持不变，因为这个已经工作了) ---
+  // --- 语音播放 (优先真人，失败则用浏览器) ---
   const playGreeting = async () => {
+    const greetingText = "Hi! I am Nova. If you are navigating any emotional challenges, or just need to talk, I am here to support you.";
+    
     try {
+      // 1. 尝试初始化音频
       if (!audioContextRef.current) {
         audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
       }
@@ -50,17 +70,13 @@ const QiMingChat: React.FC = () => {
       if (ctx.state === 'suspended') await ctx.resume();
 
       const apiKey = process.env.API_KEY || process.env.GEMINI_API_KEY;
-      if (!apiKey) return;
+      if (!apiKey) throw new Error("No API Key");
 
+      // 2. 尝试调用 Gemini 2.0 真人语音
       const ai = new GoogleGenAI({ apiKey: apiKey });
-      
       const response = await ai.models.generateContent({
         model: "gemini-2.0-flash-exp",
-        contents: [{ 
-            parts: [{ 
-                text: "Hi! I am Nova. If you are navigating any emotional challenges, or just need to talk, I am here to support you." 
-            }] 
-        }],
+        contents: [{ parts: [{ text: greetingText }] }],
         config: {
           responseModalities: ["AUDIO"],
           speechConfig: {
@@ -69,6 +85,7 @@ const QiMingChat: React.FC = () => {
         },
       });
 
+      // 3. 播放
       const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
       if (base64Audio) {
         const audioBuffer = await decodeAudioData(decodeBase64(base64Audio), ctx);
@@ -76,13 +93,18 @@ const QiMingChat: React.FC = () => {
         source.buffer = audioBuffer;
         source.connect(ctx.destination);
         source.start();
+      } else {
+        throw new Error("No audio returned from Gemini");
       }
+
     } catch (err) {
-      console.error("Voice Error:", err);
+      console.warn("Gemini Voice Failed (using fallback):", err);
+      // 🔥 关键修复：如果真人语音失败，立刻用浏览器语音，保证有声音！
+      speakWithBrowser(greetingText);
     }
   };
 
-  // --- 聊天部分 (关键修改：统一使用 2.0 模型) ---
+  // --- 聊天部分 (使用最稳定的 1.5 Flash) ---
   const handleSend = async () => {
     if (!input.trim() || isLoading) return;
 
@@ -97,16 +119,14 @@ const QiMingChat: React.FC = () => {
 
       const ai = new GoogleGenAI({ apiKey: apiKey });
       
-      // 🚨 这里的修改是关键！
-      // 既然 2.0 能说话，那它肯定也能聊天。我们不再用 1.5 了。
+      // 🔥 关键修复：聊天只用 gemini-1.5-flash，且不请求 audio，确保不报错
       const response = await ai.models.generateContent({
-        model: "gemini-2.0-flash-exp", // <--- 统一改成 2.0，修复 Model not found
+        model: "gemini-1.5-flash", 
         contents: [
             { role: "user", parts: [{ text: userMsg }] }
         ],
         config: {
-            systemInstruction: "You are Nova, a warm and empathetic mental health mentor for students. Keep answers concise and supportive.",
-            // 注意：这里不加 AUDIO 参数，只请求文字
+            systemInstruction: "You are Nova, a warm and empathetic mental health mentor. Keep answers concise.",
         }
       });
 
@@ -115,14 +135,18 @@ const QiMingChat: React.FC = () => {
       if (aiText) {
           setMessages(prev => [...prev, { role: 'ai', text: aiText }]);
       } else {
-          // 如果 2.0 偶尔返回空（有时候会这样），给一个兜底回复
-          setMessages(prev => [...prev, { role: 'ai', text: "I'm listening. Could you tell me more?" }]);
+          setMessages(prev => [...prev, { role: 'ai', text: "I'm here. Please go on." }]);
       }
 
     } catch (error: any) {
       console.error("Chat Error:", error);
-      let errorMsg = "Connection lost. Please try again.";
-      if (error.message?.includes("404")) errorMsg = "Error: Model not found. (Check Key)";
+      let errorMsg = "Connection lost. Please check your network.";
+      
+      // 详细的错误诊断
+      if (error.message?.includes("404")) errorMsg = "Error: Model 'gemini-1.5-flash' not found. (Region/Key issue)";
+      if (error.message?.includes("401") || error.message?.includes("API key")) errorMsg = "Error: Invalid API Key.";
+      if (error.message?.includes("503")) errorMsg = "Nova is currently overloaded. Please try again in a moment.";
+
       setMessages(prev => [...prev, { role: 'ai', text: errorMsg }]);
     } finally {
       setIsLoading(false);
