@@ -18,7 +18,7 @@ const Module3: React.FC = () => {
   const [origin, setOrigin] = useState('');
 
   useEffect(() => {
-    // Dynamically set origin for GitHub Pages compatibility
+    // Detect environment origin for YouTube embed security policy
     setOrigin(window.location.origin);
   }, []);
 
@@ -26,7 +26,7 @@ const Module3: React.FC = () => {
     setPlacements(prev => ({ ...prev, [roleId]: orbitId }));
   };
 
-  // High-stability video IDs from reputable channels
+  // Curated video list with your specific request as Channel 2
   const videoChannels = [
     {
       id: "jfKfPfyJRdk", 
@@ -34,9 +34,9 @@ const Module3: React.FC = () => {
       desc: "Endless low-fidelity beats. A consistent rhythmic companion that acts as a 'white noise' shield for your planet."
     },
     {
-      id: "RefIZ5PeiTs", // User provided: Space Ambient Music
+      id: "RefIZ5PeiTs", // Your requested Space Ambient video
       title: "Stellar Ambient Echoes",
-      desc: "Deep space soundscapes that expand the mind. Ideal for deep contemplation and releasing the weight of gravity."
+      desc: "Deep space soundscapes designed for ultimate focus and stress relief. Let the cosmic frequencies wash away academic pressure."
     },
     {
       id: "n_LnkSIsC94", 
@@ -50,9 +50,10 @@ const Module3: React.FC = () => {
       autoplay: '1',
       mute: '1',
       loop: '1',
-      playlist: videoId, 
+      playlist: videoId, // Required for looping single video
       modestbranding: '1',
       rel: '0',
+      enablejsapi: '1',
       origin: origin || 'https://github.io'
     });
     return `https://www.youtube.com/embed/${videoId}?${params.toString()}`;
@@ -64,17 +65,18 @@ const Module3: React.FC = () => {
         <span className="text-amber-400 font-bold tracking-widest text-sm uppercase">Module 03</span>
         <h1 className="text-3xl font-bold text-white mt-2">The Support Orbit: No Planet is an Island</h1>
         <p className="mt-4 text-gray-400 leading-relaxed">
-          In space, gravity holds everything together. In life, that gravity is your support network. Recognizing your allies is the first step toward long-term resilience.
+          In space, gravity holds everything together. In life, that gravity is your support network. Identifying your allies is the first step toward long-term resilience.
         </p>
       </header>
 
-      {/* Interactive Support Map */}
+      {/* Interactive Support Map Section */}
       <section className="mb-16">
         <h2 className="text-xl font-bold text-white mb-6 flex items-center gap-2">
           <i className="fas fa-satellite text-green-400"></i> Interactive Social Map
         </h2>
         
         <div className="glass-card p-8 rounded-3xl flex flex-col lg:flex-row gap-12">
+          {/* Orbital Visualization */}
           <div className="relative w-full lg:w-1/2 aspect-square flex items-center justify-center border border-white/5 rounded-full bg-black/20 overflow-hidden shadow-inner">
             <div className="absolute w-[95%] h-[95%] border border-dashed border-purple-500/20 rounded-full flex items-start justify-center pt-2">
               <span className="text-[7px] uppercase tracking-widest text-purple-400/30">Satellite</span>
@@ -112,6 +114,7 @@ const Module3: React.FC = () => {
             })}
           </div>
 
+          {/* Allocation Controls */}
           <div className="flex-grow space-y-3">
             <h3 className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-4">Assign Your Allies</h3>
             {roles.map(role => (
@@ -161,7 +164,7 @@ const Module3: React.FC = () => {
         <div className="glass-card p-1 rounded-3xl overflow-hidden border border-purple-500/20 shadow-2xl">
           <div className="relative aspect-video bg-black/60 group">
             <iframe
-              key={videoChannels[currentVideo].id}
+              key={`${videoChannels[currentVideo].id}-${currentVideo}`}
               src={getEmbedUrl(videoChannels[currentVideo].id)}
               className="absolute inset-0 w-full h-full border-0"
               allow="autoplay; encrypted-media; gyroscope; picture-in-picture"
@@ -171,7 +174,7 @@ const Module3: React.FC = () => {
             
             <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center pointer-events-none">
               <div className="bg-purple-600/90 text-white px-4 py-2 rounded-full text-[10px] font-bold uppercase tracking-widest border border-white/20">
-                Playing Channel {currentVideo + 1}
+                Atmosphere: {videoChannels[currentVideo].title}
               </div>
             </div>
           </div>
@@ -183,7 +186,7 @@ const Module3: React.FC = () => {
             <p className="text-gray-400 text-xs mt-2 leading-relaxed italic">{videoChannels[currentVideo].desc}</p>
             
             <div className="mt-6 pt-6 border-t border-white/5 flex justify-between items-center">
-              <p className="text-[9px] text-gray-500 uppercase font-medium">Video not loading?</p>
+              <p className="text-[9px] text-gray-500 uppercase font-medium">Player issue? Try standard view:</p>
               <a 
                 href={`https://www.youtube.com/watch?v=${videoChannels[currentVideo].id}`} 
                 target="_blank" 
@@ -198,11 +201,10 @@ const Module3: React.FC = () => {
       </section>
 
       <section className="text-center text-gray-500 italic text-[10px] mb-12">
-        "Just like a planet needs a star, a student needs a system. Choose your orbits wisely."
+        "Surround yourself with light, even in the vacuum of space."
       </section>
     </div>
   );
 };
 
 export default Module3;
-
