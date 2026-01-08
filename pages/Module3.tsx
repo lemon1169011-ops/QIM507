@@ -26,20 +26,20 @@ const Module3: React.FC = () => {
     setPlacements(prev => ({ ...prev, [roleId]: orbitId }));
   };
 
-  // High-stability video IDs from reputable channels (Lofi Girl, Relaxing Music)
+  // High-stability video IDs from reputable channels
   const videoChannels = [
     {
-      id: "jfKfPfyJRdk", // Lofi Girl - Study Beats (Extremely Stable)
+      id: "jfKfPfyJRdk", 
       title: "Nebula Lofi Station",
       desc: "Endless low-fidelity beats. A consistent rhythmic companion that acts as a 'white noise' shield for your planet."
     },
     {
-      id: "DWcPDo0962I", // Rainy Coffee Shop (High Quality)
-      title: "Rainy Haven Cabin",
-      desc: "The sound of rain hitting glass in a cozy cabin. This visual helps ground your senses when anxiety feels like a storm."
+      id: "RefIZ5PeiTs", // User provided: Space Ambient Music
+      title: "Stellar Ambient Echoes",
+      desc: "Deep space soundscapes that expand the mind. Ideal for deep contemplation and releasing the weight of gravity."
     },
     {
-      id: "n_LnkSIsC94", // Ocean Waves (Nature Relaxation)
+      id: "n_LnkSIsC94", 
       title: "Deep Sea Serenity",
       desc: "Slow motion waves and deep blue hues. Ideal for synchronizing with the 4-7-8 breathing technique from Module 2."
     }
@@ -50,7 +50,7 @@ const Module3: React.FC = () => {
       autoplay: '1',
       mute: '1',
       loop: '1',
-      playlist: videoId, // Mandatory for loop=1 to work
+      playlist: videoId, 
       modestbranding: '1',
       rel: '0',
       origin: origin || 'https://github.io'
@@ -75,7 +75,6 @@ const Module3: React.FC = () => {
         </h2>
         
         <div className="glass-card p-8 rounded-3xl flex flex-col lg:flex-row gap-12">
-          {/* Visual Orbit Map */}
           <div className="relative w-full lg:w-1/2 aspect-square flex items-center justify-center border border-white/5 rounded-full bg-black/20 overflow-hidden shadow-inner">
             <div className="absolute w-[95%] h-[95%] border border-dashed border-purple-500/20 rounded-full flex items-start justify-center pt-2">
               <span className="text-[7px] uppercase tracking-widest text-purple-400/30">Satellite</span>
@@ -170,7 +169,6 @@ const Module3: React.FC = () => {
               title="Healing Space"
             ></iframe>
             
-            {/* Hover Fallback */}
             <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center pointer-events-none">
               <div className="bg-purple-600/90 text-white px-4 py-2 rounded-full text-[10px] font-bold uppercase tracking-widest border border-white/20">
                 Playing Channel {currentVideo + 1}
