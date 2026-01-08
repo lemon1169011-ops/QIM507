@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { GoogleGenAI, Chat, GenerateContentResponse } from "@google/genai";
+import { GoogleGenAI, Modality } from "@google/genai";
 
 const QiMingChat: React.FC = () => {
   const [isOpen, setIsOpen] = useState(false);
@@ -10,7 +10,7 @@ const QiMingChat: React.FC = () => {
   ]);
   
   const scrollRef = useRef<HTMLDivElement>(null);
-  const chatRef = useRef<Chat | null>(null);
+  const audioContextRef = useRef<AudioContext | null>(null);
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -18,24 +18,53 @@ const QiMingChat: React.FC = () => {
     }
   }, [messages, isLoading]);
 
-  const initChat = () => {
-    if (chatRef.current) return chatRef.current;
-    
-    // Explicitly casting process.env as any to bypass strict type checking for environments without @types/node
-    const apiKey = (process.env as any).API_KEY;
-    const ai = new GoogleGenAI({ apiKey: apiKey });
-    
-    chatRef.current = ai.chats.create({
-      model: 'gemini-3-flash-preview',
-      config: {
-        systemInstruction: `You are Nova, an empathetic AI mentor for high schoolers. 
-        All your responses must be in ENGLISH.
-        Keep replies supportive, encouraging, and relatively concise.
-        Refer to platform modules like 'Module 1: Weather Check', 'Module 2: 4-7-8 Breathing', or 'Module 3: Support Orbit' if relevant.
-        If a user is in severe distress, kindly advise them to speak with a trusted adult or professional counselor.`,
-      },
-    });
-    return chatRef.current;
+  // 当机器人打开时，自动播报欢迎词
+  useEffect(() => {
+    if (isOpen) {
+      handleTTS("Hello! I'm Nova, your emotional navigator. How is the weather on your inner planet today? I am here to listen.");
+    }
+  }, [isOpen]);
+
+  const handleTTS = async (text: string) => {
+    try {
+      const apiKey = (process.env as any).API_KEY;
+      if (!apiKey) return;
+
+      const ai = new GoogleGenAI({ apiKey });
+      const response = await ai.models.generateContent({
+        model: "gemini-2.5-flash-preview-tts",
+        contents: [{ parts: [{ text: `Say warmly and calmly: ${text}` }] }],
+        config: {
+          responseModalities: [Modality.AUDIO],
+          speechConfig: {
+            voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Kore' } },
+          },
+        },
+      });
+
+      const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+      if (base64Audio) {
+        if (!audioContextRef.current) {
+          audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
+        }
+        const ctx = audioContextRef.current;
+        const audioData = atob(base64Audio);
+        const bytes = new Uint8Array(audioData.length);
+        for (let i = 0; i < audioData.length; i++) bytes[i] = audioData.charCodeAt(i);
+        
+        const dataInt16 = new Int16Array(bytes.buffer);
+        const buffer = ctx.createBuffer(1, dataInt16.length, 24000);
+        const channelData = buffer.getChannelData(0);
+        for (let i = 0; i < dataInt16.length; i++) channelData[i] = dataInt16[i] / 32768.0;
+
+        const source = ctx.createBufferSource();
+        source.buffer = buffer;
+        source.connect(ctx.destination);
+        source.start();
+      }
+    } catch (e) {
+      console.error("TTS Error", e);
+    }
   };
 
   const handleSend = async () => {
@@ -47,14 +76,20 @@ const QiMingChat: React.FC = () => {
     setIsLoading(true);
 
     try {
-      const chat = initChat();
-      const response: GenerateContentResponse = await chat.sendMessage({ message: userMsg });
-      
-      // Property access to .text as per SDK guidelines
-      const aiText = response.text || "Communication glitch... Please try again, traveler.";
+      const apiKey = (process.env as any).API_KEY;
+      const ai = new GoogleGenAI({ apiKey });
+      const chat = ai.chats.create({
+        model: 'gemini-3-flash-preview',
+        config: {
+          systemInstruction: `You are Nova, an empathetic AI mentor. Keep replies supportive and concise. Use cosmic metaphors.`,
+        },
+      });
+
+      const response = await chat.sendMessage({ message: userMsg });
+      const aiText = response.text || "Communication glitch... Please try again.";
       setMessages(prev => [...prev, { role: 'ai', text: aiText }]);
+      handleTTS(aiText); // 播报AI回答
     } catch (error) {
-      console.error("Gemini API Error:", error);
       setMessages(prev => [...prev, { role: 'ai', text: "Signal lost! Please check your space connection." }]);
     } finally {
       setIsLoading(false);
@@ -67,7 +102,7 @@ const QiMingChat: React.FC = () => {
         <div className="glass-card w-80 md:w-96 h-[500px] rounded-2xl flex flex-col shadow-2xl border border-cyan-500/30 overflow-hidden animate-in slide-in-from-bottom-10">
           <div className="bg-cyan-600 p-4 flex justify-between items-center shadow-lg">
             <div className="flex items-center gap-3">
-              <div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center">
+              <div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center animate-pulse">
                  <i className="fas fa-robot text-white text-sm"></i>
               </div>
               <span className="font-bold text-white text-sm uppercase tracking-widest">Nova AI Mentor</span>
