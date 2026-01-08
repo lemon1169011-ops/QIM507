@@ -1,6 +1,36 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { GoogleGenAI, Modality } from "@google/genai";
 
+// 辅助函数：解码 Base64 为 Uint8Array
+function decodeBase64(base64: string) {
+  const binaryString = atob(base64);
+  const bytes = new Uint8Array(binaryString.length);
+  for (let i = 0; i < binaryString.length; i++) {
+    bytes[i] = binaryString.charCodeAt(i);
+  }
+  return bytes;
+}
+
+// 辅助函数：将 raw PCM 数据转为 AudioBuffer
+async function decodeAudioData(
+  data: Uint8Array,
+  ctx: AudioContext,
+  sampleRate: number,
+  numChannels: number,
+): Promise<AudioBuffer> {
+  const dataInt16 = new Int16Array(data.buffer);
+  const frameCount = dataInt16.length / numChannels;
+  const buffer = ctx.createBuffer(numChannels, frameCount, sampleRate);
+
+  for (let channel = 0; channel < numChannels; channel++) {
+    const channelData = buffer.getChannelData(channel);
+    for (let i = 0; i < frameCount; i++) {
+      channelData[i] = dataInt16[i * numChannels + channel] / 32768.0;
+    }
+  }
+  return buffer;
+}
+
 const QiMingChat: React.FC = () => {
   const [isOpen, setIsOpen] = useState(false);
   const [input, setInput] = useState('');
@@ -18,22 +48,26 @@ const QiMingChat: React.FC = () => {
     }
   }, [messages, isLoading]);
 
-  // 当机器人打开时，自动播报欢迎词
-  useEffect(() => {
-    if (isOpen) {
-      handleTTS("Hello! I'm Nova, your emotional navigator. How is the weather on your inner planet today? I am here to listen.");
+  // 初始化或恢复 AudioContext
+  const getAudioContext = async () => {
+    if (!audioContextRef.current) {
+      audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
     }
-  }, [isOpen]);
+    if (audioContextRef.current.state === 'suspended') {
+      await audioContextRef.current.resume();
+    }
+    return audioContextRef.current;
+  };
 
   const handleTTS = async (text: string) => {
     try {
-      const apiKey = (process.env as any).API_KEY;
+      const apiKey = process.env.API_KEY;
       if (!apiKey) return;
 
       const ai = new GoogleGenAI({ apiKey });
       const response = await ai.models.generateContent({
         model: "gemini-2.5-flash-preview-tts",
-        contents: [{ parts: [{ text: `Say warmly and calmly: ${text}` }] }],
+        contents: [{ parts: [{ text: `Say this warmly and supportively: ${text}` }] }],
         config: {
           responseModalities: [Modality.AUDIO],
           speechConfig: {
@@ -44,26 +78,29 @@ const QiMingChat: React.FC = () => {
 
       const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
       if (base64Audio) {
-        if (!audioContextRef.current) {
-          audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
-        }
-        const ctx = audioContextRef.current;
-        const audioData = atob(base64Audio);
-        const bytes = new Uint8Array(audioData.length);
-        for (let i = 0; i < audioData.length; i++) bytes[i] = audioData.charCodeAt(i);
+        const ctx = await getAudioContext();
+        const bytes = decodeBase64(base64Audio);
+        // Gemini TTS 返回的是 24kHz 单声道原始 PCM
+        const audioBuffer = await decodeAudioData(bytes, ctx, 24000, 1);
         
-        const dataInt16 = new Int16Array(bytes.buffer);
-        const buffer = ctx.createBuffer(1, dataInt16.length, 24000);
-        const channelData = buffer.getChannelData(0);
-        for (let i = 0; i < dataInt16.length; i++) channelData[i] = dataInt16[i] / 32768.0;
-
         const source = ctx.createBufferSource();
-        source.buffer = buffer;
+        source.buffer = audioBuffer;
         source.connect(ctx.destination);
         source.start();
       }
     } catch (e) {
-      console.error("TTS Error", e);
+      console.error("TTS Error:", e);
+    }
+  };
+
+  const toggleChat = async () => {
+    const nextState = !isOpen;
+    setIsOpen(nextState);
+    if (nextState) {
+      // 在用户点击瞬间激活音频上下文
+      await getAudioContext();
+      // 延迟播报欢迎词，确保 UI 渲染完成
+      setTimeout(() => handleTTS(messages[0].text), 500);
     }
   };
 
@@ -76,21 +113,22 @@ const QiMingChat: React.FC = () => {
     setIsLoading(true);
 
     try {
-      const apiKey = (process.env as any).API_KEY;
+      const apiKey = process.env.API_KEY;
       const ai = new GoogleGenAI({ apiKey });
       const chat = ai.chats.create({
         model: 'gemini-3-flash-preview',
         config: {
-          systemInstruction: `You are Nova, an empathetic AI mentor. Keep replies supportive and concise. Use cosmic metaphors.`,
+          systemInstruction: `You are Nova, an empathetic AI mentor for high school students. Keep replies supportive, brief, and use space metaphors. Current module: MindPlanet Resilience Project.`,
         },
       });
 
       const response = await chat.sendMessage({ message: userMsg });
-      const aiText = response.text || "Communication glitch... Please try again.";
+      const aiText = response.text || "Communication glitch... My sensors are a bit hazy.";
       setMessages(prev => [...prev, { role: 'ai', text: aiText }]);
-      handleTTS(aiText); // 播报AI回答
+      handleTTS(aiText);
     } catch (error) {
-      setMessages(prev => [...prev, { role: 'ai', text: "Signal lost! Please check your space connection." }]);
+      console.error("Chat Error:", error);
+      setMessages(prev => [...prev, { role: 'ai', text: "Signal lost! My sensors can't reach your planet. Try again?" }]);
     } finally {
       setIsLoading(false);
     }
@@ -151,7 +189,7 @@ const QiMingChat: React.FC = () => {
         </div>
       ) : (
         <button 
-          onClick={() => setIsOpen(true)} 
+          onClick={toggleChat} 
           className="w-14 h-14 rounded-full bg-cyan-600 text-white flex items-center justify-center text-xl shadow-[0_0_20px_rgba(6,182,212,0.4)] hover:scale-110 transition-all planet-glow border border-white/20 animate-bounce"
         >
           <i className="fas fa-robot"></i>
