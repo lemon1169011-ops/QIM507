@@ -17,32 +17,32 @@ const Module1: React.FC = () => {
     { 
       title: "Slide 1: The Masks of Stress", 
       content: "Why do you feel tired even when you aren't doing 'anything'? \n\nStress doesn't always look like 'being busy'. It wears masks like procrastination, anger, or even deep fatigue. Identifying the mask is the first step to taking it off.",
-      why: "Psycho-education: Labeling an emotion reduces its power over you."
+      why: "Psycho-education: Labeling an emotion reduces its power over you. It moves the processing from the emotional amygdala to the rational prefrontal cortex."
     },
     { 
       title: "Slide 2: The Anxiety Alarm", 
       content: "Mask: Over-worrying & Brain Loops. \n\nAnxiety is your planet's internal alarm system being stuck in 'ON'. It's trying to protect you from future threats, but it's wasting your energy today.",
-      why: "Insight: Anxiety is a protective mechanism gone into overdrive."
+      why: "Insight: Understanding anxiety as a protective mechanism gone into overdrive helps reduce self-blame."
     },
     { 
       title: "Slide 3: The Depressive Fog", 
       content: "Mask: Loss of Interest & 'Laziness'. \n\nWhen stress becomes chronic, your planet enters 'Power Save Mode'. You aren't lazy; your emotional battery is simply empty and needs a recharge.",
-      why: "Self-Compassion: Understanding that withdrawal is a survival strategy, not a failure."
+      why: "Self-Compassion: Understanding that withdrawal is a survival strategy, not a failure, is key to starting the recovery process."
     },
     { 
       title: "Slide 4: Learned Helplessness", 
       content: "Mask: 'What's the point?'. \n\nRepeated academic setbacks can make you feel like your effort doesn't matter. This is a cognitive trap. Your actions STILL have power, even if they feel small.",
-      why: "Empowerment: Breaking the cycle of 'effort is useless' through small wins."
+      why: "Empowerment: Breaking the cycle of 'effort is useless' through small, manageable wins allows you to rebuild confidence."
     },
     { 
       title: "Slide 5: Recognition = Recovery", 
       content: "The path home: Acceptance. \n\nOnce you see the mask, you can say: 'I see you, Anxiety.' Now, you can use your tools—like breathing or social connection—to begin true healing.",
-      why: "Action: Moving from passive suffering to active management."
+      why: "Action: Moving from passive suffering to active management starts with simple recognition of the current state."
     },
   ];
 
   return (
-    <div className="max-w-4xl mx-auto px-6 py-12">
+    <div className="max-w-4xl mx-auto px-6 py-12 animate-in fade-in duration-500">
       <header className="mb-12">
         <span className="text-cyan-400 font-bold tracking-widest text-sm uppercase">Module 01</span>
         <h1 className="text-3xl font-bold text-white mt-2">Identify Your Weather: Deconstructing the Masks</h1>
@@ -57,7 +57,7 @@ const Module1: React.FC = () => {
           <i className="fas fa-satellite-dish text-cyan-400"></i> Quick Weather Check-in
         </h2>
         <div className="glass-card p-8 rounded-3xl">
-          <p className="text-gray-300 mb-8">How is your "Internal Weather" right now? Identifying it immediately lowers your cognitive load.</p>
+          <p className="text-gray-300 mb-8 text-sm">How is your "Internal Weather" right now? Identifying it immediately lowers your cognitive load and helps Nova understand you better.</p>
           <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
             {moods.map((mood) => (
               <button
@@ -104,7 +104,7 @@ const Module1: React.FC = () => {
           </div>
           <div className="p-10 md:p-16 min-h-[400px] flex flex-col justify-center bg-gradient-to-br from-slate-950 to-indigo-950">
             <h3 className="text-2xl font-bold text-white mb-6 border-b border-white/10 pb-4">{pptSlides[activeSlide].title}</h3>
-            <p className="text-gray-300 whitespace-pre-wrap leading-relaxed mb-8">{pptSlides[activeSlide].content}</p>
+            <p className="text-gray-300 whitespace-pre-wrap leading-relaxed mb-8 text-sm md:text-base">{pptSlides[activeSlide].content}</p>
             <div className="mt-auto pt-6 border-t border-white/5">
               <span className="text-[10px] text-cyan-400 font-bold uppercase tracking-[0.2em]">The "Why":</span>
               <p className="text-xs text-gray-500 italic mt-1">{pptSlides[activeSlide].why}</p>
