@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { GoogleGenAI, Modality } from "@google/genai";
 
-// 基础编解码函数
+// Standard PCM Audio Decoding
 function decode(base64: string) {
   const binaryString = atob(base64);
   const bytes = new Uint8Array(binaryString.length);
@@ -28,29 +28,36 @@ const QiMingChat: React.FC = () => {
   const [isOpen, setIsOpen] = useState(false);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  // Initial check for key
   const [hasKey, setHasKey] = useState(!!process.env.API_KEY);
   const [messages, setMessages] = useState<{role: 'ai' | 'user', text: string}[]>([
-    { role: 'ai', text: "Hello! I'm Nova, your emotional navigator. Signal established. How's the weather on your inner planet today?" }
+    { role: 'ai', text: "Welcome back, explorer! I'm Nova. I've been monitoring your star system. How are you feeling in your orbit today?" }
   ]);
   
   const scrollRef = useRef<HTMLDivElement>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
 
+  // Sync scroll
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
   }, [messages, isLoading]);
 
-  // 检查 API Key 状态
+  // Periodic key check when open
   useEffect(() => {
-    const checkKey = async () => {
-      if (window.aistudio) {
-        const selected = await window.aistudio.hasSelectedApiKey();
-        setHasKey(selected || !!process.env.API_KEY);
-      }
-    };
-    checkKey();
+    let interval: any;
+    if (isOpen) {
+      const check = async () => {
+        if (window.aistudio?.hasSelectedApiKey) {
+          const selected = await window.aistudio.hasSelectedApiKey();
+          if (selected) setHasKey(true);
+        }
+      };
+      check();
+      interval = setInterval(check, 2000);
+    }
+    return () => clearInterval(interval);
   }, [isOpen]);
 
   const initAudio = async () => {
@@ -68,10 +75,11 @@ const QiMingChat: React.FC = () => {
       const apiKey = process.env.API_KEY;
       if (!apiKey) return;
 
+      // Always new instance to ensure latest key usage
       const ai = new GoogleGenAI({ apiKey });
       const response = await ai.models.generateContent({
         model: "gemini-2.5-flash-preview-tts",
-        contents: [{ parts: [{ text: `Respond warmly: ${text}` }] }],
+        contents: [{ parts: [{ text: text }] }],
         config: {
           responseModalities: [Modality.AUDIO],
           speechConfig: {
@@ -90,14 +98,21 @@ const QiMingChat: React.FC = () => {
         source.start();
       }
     } catch (e) {
-      console.error("Nova Speech System Error:", e);
+      console.error("Nova TTS Error:", e);
     }
   };
 
   const handleOpenKeySelection = async () => {
-    if (window.aistudio) {
-      await window.aistudio.openSelectKey();
-      setHasKey(true); // 假设选择成功并继续
+    if (window.aistudio?.openSelectKey) {
+      try {
+        await window.aistudio.openSelectKey();
+        // Mandatory rule: Assume success after triggering and proceed
+        setHasKey(true); 
+      } catch (err) {
+        console.error("Key selection failed:", err);
+      }
+    } else {
+      alert("Please ensure you are running this in the MindPlanet preview environment to select an API Key.");
     }
   };
 
@@ -105,10 +120,10 @@ const QiMingChat: React.FC = () => {
     const nextState = !isOpen;
     setIsOpen(nextState);
     if (nextState) {
-      await initAudio(); // 强制激活音频上下文
+      await initAudio();
       setTimeout(() => {
         handleTTS(messages[0].text);
-      }, 500);
+      }, 300);
     }
   };
 
@@ -121,9 +136,10 @@ const QiMingChat: React.FC = () => {
     setIsLoading(true);
 
     try {
+      // Fetch key right before request
       const apiKey = process.env.API_KEY;
       if (!apiKey) {
-        throw new Error("API Key Missing. Please click 'Connect Signal' above.");
+        throw new Error("API Key Missing. Click 'Connect Signal' to fix.");
       }
 
       const ai = new GoogleGenAI({ apiKey });
@@ -131,16 +147,24 @@ const QiMingChat: React.FC = () => {
         model: 'gemini-3-flash-preview',
         contents: [{ parts: [{ text: userMsg }] }],
         config: {
-          systemInstruction: "You are Nova, an empathetic AI mentor for high schoolers. Be supportive, concise, and use space metaphors. Support SDG 3 goals.",
+          systemInstruction: "You are Nova, an empathetic AI mentor. Use space metaphors, be supportive, and help with stress.",
         },
       });
 
-      const aiText = response.text || "Signal interrupted... Please try again.";
+      const aiText = response.text || "I encountered a nebula distortion. Please try again.";
       setMessages(prev => [...prev, { role: 'ai', text: aiText }]);
       handleTTS(aiText);
     } catch (error: any) {
-      console.error("Communication Error:", error);
-      setMessages(prev => [...prev, { role: 'ai', text: `Signal Lost: ${error.message}` }]);
+      console.error("Chat Error:", error);
+      const msg = error.message || "";
+      
+      // Mandatory rule: if "not found", reset key selection
+      if (msg.includes("Requested entity was not found")) {
+        setHasKey(false);
+        setMessages(prev => [...prev, { role: 'ai', text: "Your satellite signal expired. Please re-connect using the button at the top." }]);
+      } else {
+        setMessages(prev => [...prev, { role: 'ai', text: `Signal Error: ${msg || 'Unknown Interference'}` }]);
+      }
     } finally {
       setIsLoading(false);
     }
@@ -151,44 +175,61 @@ const QiMingChat: React.FC = () => {
       {isOpen ? (
         <div className="glass-card w-80 md:w-96 h-[500px] rounded-2xl flex flex-col shadow-2xl border border-cyan-500/30 overflow-hidden animate-in slide-in-from-bottom-10">
           {/* Header */}
-          <div className="bg-cyan-600 p-4 flex justify-between items-center">
+          <div className="bg-cyan-600 p-4 flex justify-between items-center shadow-lg">
             <div className="flex items-center gap-3">
-              <div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center animate-pulse">
+              <div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center">
                 <i className="fas fa-robot text-white text-sm"></i>
               </div>
-              <span className="font-bold text-white text-[10px] uppercase tracking-widest">Nova AI Mentor</span>
+              <div>
+                <span className="block font-bold text-white text-[10px] uppercase tracking-widest leading-none">Nova AI Mentor</span>
+                <div className="flex items-center gap-1 mt-1">
+                  <div className={`w-1.5 h-1.5 rounded-full ${hasKey ? 'bg-emerald-400' : 'bg-amber-400'}`}></div>
+                  <span className="text-[7px] text-white/70 uppercase">{hasKey ? 'Synced' : 'No Signal'}</span>
+                </div>
+              </div>
             </div>
-            <button onClick={() => setIsOpen(false)} className="text-white hover:rotate-90 transition-all">
+            <button onClick={() => setIsOpen(false)} className="text-white hover:scale-125 transition-all">
               <i className="fas fa-times"></i>
             </button>
           </div>
           
-          {/* API Key Alert */}
+          {/* Billing & Key Alert (Mandatory Requirement) */}
           {!hasKey && (
-            <div className="bg-amber-500/20 p-3 text-center border-b border-amber-500/30">
-              <p className="text-[10px] text-amber-200 font-bold mb-2">GALAXY SIGNAL DISCONNECTED</p>
+            <div className="bg-amber-500/10 p-4 text-center border-b border-amber-500/20">
+              <p className="text-[9px] text-amber-300 font-bold mb-3 uppercase tracking-tighter">
+                Galaxy signal requires a paid API key
+              </p>
               <button 
                 onClick={handleOpenKeySelection}
-                className="bg-amber-500 hover:bg-amber-400 text-slate-950 text-[9px] font-black px-4 py-1.5 rounded-full uppercase transition-all"
+                className="w-full bg-amber-500 hover:bg-amber-400 text-slate-950 text-[9px] font-black py-2 rounded-lg uppercase transition-all mb-2"
               >
                 Connect Signal (Select API Key)
               </button>
+              <a 
+                href="https://ai.google.dev/gemini-api/docs/billing" 
+                target="_blank" 
+                className="text-[8px] text-cyan-400 underline uppercase font-bold"
+              >
+                Learn about Billing & Keys
+              </a>
             </div>
           )}
 
-          {/* Chat area */}
+          {/* Messages */}
           <div ref={scrollRef} className="flex-grow overflow-y-auto p-4 space-y-4 bg-slate-950/60 text-[11px] scroll-hide">
             {messages.map((m, i) => (
               <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                <div className={`max-w-[85%] p-3 rounded-2xl ${m.role === 'user' ? 'bg-cyan-600 text-white rounded-tr-none' : 'bg-white/10 text-gray-200 rounded-tl-none border border-white/5'}`}>
+                <div className={`max-w-[85%] p-3 rounded-2xl ${m.role === 'user' ? 'bg-cyan-600 text-white rounded-tr-none shadow-lg' : 'bg-white/10 text-gray-200 rounded-tl-none border border-white/5'}`}>
                   {m.text}
                 </div>
               </div>
             ))}
             {isLoading && (
-              <div className="flex justify-start animate-pulse">
-                <div className="bg-white/5 px-3 py-2 rounded-xl text-[9px] text-cyan-400 uppercase font-bold tracking-tighter">
-                  Interpreting Nebula signals...
+              <div className="flex justify-start">
+                <div className="bg-white/5 px-3 py-2 rounded-xl flex gap-1 items-center">
+                  <div className="w-1 h-1 bg-cyan-400 rounded-full animate-bounce"></div>
+                  <div className="w-1 h-1 bg-cyan-400 rounded-full animate-bounce [animation-delay:0.2s]"></div>
+                  <div className="w-1 h-1 bg-cyan-400 rounded-full animate-bounce [animation-delay:0.4s]"></div>
                 </div>
               </div>
             )}
@@ -200,21 +241,26 @@ const QiMingChat: React.FC = () => {
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && handleSend()}
-              placeholder="Message Nova..." 
-              className="flex-grow bg-white/5 border border-white/10 rounded-xl px-4 py-2 text-xs text-white focus:outline-none" 
+              placeholder={hasKey ? "Type a signal..." : "Connect signal above first..."}
+              disabled={!hasKey}
+              className="flex-grow bg-white/5 border border-white/10 rounded-xl px-4 py-2 text-xs text-white focus:outline-none focus:ring-1 focus:ring-cyan-500 disabled:opacity-50" 
             />
             <button 
               onClick={handleSend}
-              disabled={isLoading || !hasKey}
-              className="bg-cyan-600 text-white p-2 w-10 h-10 rounded-xl disabled:opacity-30"
+              disabled={isLoading || !hasKey || !input.trim()}
+              className="bg-cyan-600 text-white p-2 w-10 h-10 rounded-xl hover:bg-cyan-500 disabled:opacity-20 transition-all shadow-lg"
             >
               <i className="fas fa-paper-plane text-xs"></i>
             </button>
           </div>
         </div>
       ) : (
-        <button onClick={toggleChat} className="w-16 h-16 rounded-full bg-cyan-600 text-white flex items-center justify-center text-2xl shadow-xl hover:scale-110 transition-all border border-white/20 animate-bounce">
+        <button 
+          onClick={toggleChat} 
+          className="w-16 h-16 rounded-full bg-cyan-600 text-white flex items-center justify-center text-2xl shadow-[0_0_20px_rgba(6,182,212,0.4)] hover:scale-110 transition-all border border-white/20 animate-bounce relative"
+        >
           <i className="fas fa-robot"></i>
+          {!hasKey && <span className="absolute top-0 right-0 w-4 h-4 bg-amber-500 rounded-full border-2 border-slate-900 animate-pulse"></span>}
         </button>
       )}
     </div>
