@@ -1,6 +1,14 @@
 
 import React, { useState, useRef, useEffect } from 'react';
-import { GoogleGenAI, Chat, Modality, GenerateContentResponse } from "@google/genai";
+import { GoogleGenAI, Chat, GenerateContentResponse } from "@google/genai";
+
+// Declare process for TypeScript to avoid "Cannot find name 'process'" build errors in CI/CD
+declare var process: {
+  env: {
+    API_KEY: string;
+    [key: string]: string | undefined;
+  };
+};
 
 const QiMingChat: React.FC = () => {
   const [isOpen, setIsOpen] = useState(false);
@@ -22,6 +30,7 @@ const QiMingChat: React.FC = () => {
   const initChat = () => {
     if (chatRef.current) return chatRef.current;
     
+    // Create instance right before use to ensure latest API key
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     chatRef.current = ai.chats.create({
       model: 'gemini-3-flash-preview',
@@ -47,6 +56,8 @@ const QiMingChat: React.FC = () => {
     try {
       const chat = initChat();
       const response: GenerateContentResponse = await chat.sendMessage({ message: userMsg });
+      
+      // Use .text property as per guidelines
       const aiText = response.text || "Communication glitch... Please try again, traveler.";
       setMessages(prev => [...prev, { role: 'ai', text: aiText }]);
     } catch (error) {
@@ -66,46 +77,53 @@ const QiMingChat: React.FC = () => {
               <i className="fas fa-robot text-white"></i>
               <span className="font-bold text-white text-sm">Nova AI Mentor</span>
             </div>
-            <button onClick={() => setIsOpen(false)} className="text-white/80 hover:text-white">
+            <button onClick={() => setIsOpen(false)} className="text-white/80 hover:text-white transition-transform hover:rotate-90">
               <i className="fas fa-times"></i>
             </button>
           </div>
           
-          <div ref={scrollRef} className="flex-grow overflow-y-auto p-4 space-y-4 bg-slate-900/40 text-sm">
+          <div ref={scrollRef} className="flex-grow overflow-y-auto p-4 space-y-4 bg-slate-900/40 text-sm scroll-hide">
             {messages.map((m, i) => (
               <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                <div className={`max-w-[85%] p-3 rounded-2xl ${m.role === 'user' ? 'bg-cyan-600 text-white rounded-tr-none' : 'bg-white/10 text-gray-200 rounded-tl-none'}`}>
+                <div className={`max-w-[85%] p-3 rounded-2xl ${m.role === 'user' ? 'bg-cyan-600 text-white rounded-tr-none shadow-md' : 'bg-white/10 text-gray-200 rounded-tl-none border border-white/5'}`}>
                   {m.text}
                 </div>
               </div>
             ))}
             {isLoading && (
               <div className="flex justify-start">
-                <div className="bg-white/5 p-3 rounded-2xl rounded-tl-none flex gap-1 items-center">
-                  <div className="w-1 h-1 bg-cyan-400 rounded-full animate-bounce"></div>
-                  <div className="w-1 h-1 bg-cyan-400 rounded-full animate-bounce [animation-delay:0.2s]"></div>
+                <div className="bg-white/5 p-3 rounded-2xl rounded-tl-none flex gap-1.5 items-center">
+                  <div className="w-1.5 h-1.5 bg-cyan-400 rounded-full animate-bounce"></div>
+                  <div className="w-1.5 h-1.5 bg-cyan-400 rounded-full animate-bounce [animation-delay:0.2s]"></div>
+                  <div className="w-1.5 h-1.5 bg-cyan-400 rounded-full animate-bounce [animation-delay:0.4s]"></div>
                 </div>
               </div>
             )}
           </div>
           
-          <div className="p-4 border-t border-white/10">
+          <div className="p-4 border-t border-white/10 bg-slate-900/60">
             <div className="flex gap-2">
               <input 
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && handleSend()}
                 placeholder="Talk to Nova..." 
-                className="flex-grow bg-white/5 border border-white/10 rounded-xl px-4 py-2 text-xs text-white focus:outline-none focus:ring-1 focus:ring-cyan-500" 
+                className="flex-grow bg-white/5 border border-white/10 rounded-xl px-4 py-2 text-xs text-white focus:outline-none focus:ring-1 focus:ring-cyan-500 placeholder:text-gray-600" 
               />
-              <button onClick={handleSend} className="bg-cyan-600 text-white p-2 rounded-xl">
+              <button 
+                onClick={handleSend} 
+                className="bg-cyan-600 text-white p-2 w-10 h-10 rounded-xl hover:bg-cyan-500 transition-all active:scale-95"
+              >
                 <i className="fas fa-paper-plane text-xs"></i>
               </button>
             </div>
           </div>
         </div>
       ) : (
-        <button onClick={() => setIsOpen(true)} className="w-14 h-14 rounded-full bg-cyan-600 text-white flex items-center justify-center text-xl shadow-xl hover:scale-110 transition-all">
+        <button 
+          onClick={() => setIsOpen(true)} 
+          className="w-14 h-14 rounded-full bg-cyan-600 text-white flex items-center justify-center text-xl shadow-xl hover:scale-110 transition-all planet-glow border border-white/20"
+        >
           <i className="fas fa-robot"></i>
         </button>
       )}
