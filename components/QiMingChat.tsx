@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { GoogleGenAI, Modality } from "@google/genai";
 
-// 辅助函数：解码 Base64 为 Uint8Array (遵循官方示例)
+// 辅助函数：解码 Base64 为 Uint8Array
 function decodeBase64(base64: string) {
   const binaryString = atob(base64);
   const bytes = new Uint8Array(binaryString.length);
@@ -48,7 +48,7 @@ const QiMingChat: React.FC = () => {
     }
   }, [messages, isLoading]);
 
-  const getAudioContext = async () => {
+  const initAudio = async () => {
     if (!audioContextRef.current) {
       audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
     }
@@ -66,7 +66,7 @@ const QiMingChat: React.FC = () => {
       const ai = new GoogleGenAI({ apiKey });
       const response = await ai.models.generateContent({
         model: "gemini-2.5-flash-preview-tts",
-        contents: [{ parts: [{ text: `Say warmly and briefly: ${text}` }] }],
+        contents: [{ parts: [{ text: `Respond warmly: ${text}` }] }],
         config: {
           responseModalities: [Modality.AUDIO],
           speechConfig: {
@@ -77,7 +77,7 @@ const QiMingChat: React.FC = () => {
 
       const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
       if (base64Audio) {
-        const ctx = await getAudioContext();
+        const ctx = await initAudio();
         const bytes = decodeBase64(base64Audio);
         const audioBuffer = await decodeAudioData(bytes, ctx, 24000, 1);
         
@@ -87,7 +87,7 @@ const QiMingChat: React.FC = () => {
         source.start();
       }
     } catch (e) {
-      console.error("Nova Voice Error:", e);
+      console.error("Nova Voice Engine Error:", e);
     }
   };
 
@@ -95,9 +95,13 @@ const QiMingChat: React.FC = () => {
     const nextState = !isOpen;
     setIsOpen(nextState);
     if (nextState) {
-      // 激活音频上下文并播报开场白
-      await getAudioContext();
-      handleTTS(messages[0].text);
+      // 激活音频并播报开场白
+      const ctx = await initAudio();
+      console.log("Audio Engine Ready:", ctx.state);
+      // 给 UI 渲染留一点时间
+      setTimeout(() => {
+        handleTTS(messages[0].text);
+      }, 300);
     }
   };
 
@@ -111,23 +115,23 @@ const QiMingChat: React.FC = () => {
 
     try {
       const apiKey = process.env.API_KEY;
-      if (!apiKey) throw new Error("Missing API Key");
+      if (!apiKey) throw new Error("API Key Missing");
 
       const ai = new GoogleGenAI({ apiKey });
       const response = await ai.models.generateContent({
         model: 'gemini-3-flash-preview',
-        contents: userMsg,
+        contents: [{ parts: [{ text: userMsg }] }],
         config: {
-          systemInstruction: `You are Nova, an empathetic AI mentor for high schoolers. Be supportive, concise, and use cosmic metaphors. Current focus: Planet Resilience.`,
+          systemInstruction: "You are Nova, an empathetic AI mentor for high schoolers. Be supportive, concise, and use space metaphors.",
         },
       });
 
-      const aiText = response.text || "Communication ripple detected... Try sending your signal again.";
+      const aiText = response.text || "Signal drift... please resend your message.";
       setMessages(prev => [...prev, { role: 'ai', text: aiText }]);
       handleTTS(aiText);
-    } catch (error) {
-      console.error("Chatbot Sync Error:", error);
-      setMessages(prev => [...prev, { role: 'ai', text: "Signal lost! My sensors can't reach your planet. Please check your orbit connection and try again." }]);
+    } catch (error: any) {
+      console.error("Communication Error Details:", error);
+      setMessages(prev => [...prev, { role: 'ai', text: `Signal Lost: ${error?.message || 'Orbit connection failed'}. Please check your network.` }]);
     } finally {
       setIsLoading(false);
     }
@@ -137,27 +141,29 @@ const QiMingChat: React.FC = () => {
     <div className="fixed bottom-24 lg:bottom-10 right-6 z-[60]">
       {isOpen ? (
         <div className="glass-card w-80 md:w-96 h-[500px] rounded-2xl flex flex-col shadow-2xl border border-cyan-500/30 overflow-hidden animate-in slide-in-from-bottom-10">
-          <div className="bg-cyan-600 p-4 flex justify-between items-center">
+          <div className="bg-cyan-600 p-4 flex justify-between items-center shadow-lg">
             <div className="flex items-center gap-3">
-              <i className="fas fa-robot text-white"></i>
-              <span className="font-bold text-white text-xs uppercase tracking-widest">Nova AI Mentor</span>
+              <div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center">
+                 <i className="fas fa-robot text-white text-sm"></i>
+              </div>
+              <span className="font-bold text-white text-[10px] uppercase tracking-widest">Nova AI Support</span>
             </div>
-            <button onClick={() => setIsOpen(false)} className="text-white hover:rotate-90 transition-transform">
+            <button onClick={() => setIsOpen(false)} className="text-white/80 hover:text-white transition-transform hover:scale-125">
               <i className="fas fa-times"></i>
             </button>
           </div>
           
-          <div ref={scrollRef} className="flex-grow overflow-y-auto p-4 space-y-4 bg-slate-950/40 scroll-hide">
+          <div ref={scrollRef} className="flex-grow overflow-y-auto p-4 space-y-4 bg-slate-950/60 text-xs scroll-hide">
             {messages.map((m, i) => (
               <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                <div className={`max-w-[85%] p-3 rounded-2xl text-xs ${m.role === 'user' ? 'bg-cyan-600 text-white rounded-tr-none' : 'bg-white/10 text-gray-200 rounded-tl-none border border-white/5'}`}>
+                <div className={`max-w-[85%] p-3 rounded-2xl shadow-sm ${m.role === 'user' ? 'bg-cyan-600 text-white rounded-tr-none' : 'bg-white/10 text-gray-200 rounded-tl-none border border-white/5'}`}>
                   {m.text}
                 </div>
               </div>
             ))}
             {isLoading && (
               <div className="flex justify-start">
-                <div className="bg-white/5 p-3 rounded-2xl flex gap-1">
+                <div className="bg-white/5 p-3 rounded-2xl rounded-tl-none flex gap-1">
                   <div className="w-1.5 h-1.5 bg-cyan-400 rounded-full animate-bounce"></div>
                   <div className="w-1.5 h-1.5 bg-cyan-400 rounded-full animate-bounce [animation-delay:0.2s]"></div>
                   <div className="w-1.5 h-1.5 bg-cyan-400 rounded-full animate-bounce [animation-delay:0.4s]"></div>
@@ -166,22 +172,22 @@ const QiMingChat: React.FC = () => {
             )}
           </div>
           
-          <div className="p-4 border-t border-white/10 bg-slate-900/60 flex gap-2">
+          <div className="p-4 border-t border-white/10 bg-slate-900/80 flex gap-2">
             <input 
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && handleSend()}
-              placeholder="Message Nova..." 
-              className="flex-grow bg-white/5 border border-white/10 rounded-xl px-4 py-2 text-xs text-white focus:outline-none" 
+              placeholder="Ask Nova anything..." 
+              className="flex-grow bg-white/5 border border-white/10 rounded-xl px-4 py-2 text-xs text-white focus:outline-none focus:ring-1 focus:ring-cyan-500 placeholder:text-gray-600" 
             />
-            <button onClick={handleSend} className="bg-cyan-600 text-white p-2 w-10 h-10 rounded-xl">
+            <button onClick={handleSend} className="bg-cyan-600 text-white p-2 w-10 h-10 rounded-xl hover:bg-cyan-500 transition-all active:scale-95 shadow-lg shadow-cyan-500/20">
               <i className="fas fa-paper-plane text-xs"></i>
             </button>
           </div>
         </div>
       ) : (
-        <button onClick={toggleChat} className="w-14 h-14 rounded-full bg-cyan-600 text-white flex items-center justify-center shadow-lg hover:scale-110 transition-all animate-bounce">
-          <i className="fas fa-robot text-xl"></i>
+        <button onClick={toggleChat} className="w-14 h-14 rounded-full bg-cyan-600 text-white flex items-center justify-center text-xl shadow-[0_0_20px_rgba(6,182,212,0.4)] hover:scale-110 transition-all border border-white/20 animate-bounce">
+          <i className="fas fa-robot"></i>
         </button>
       )}
     </div>
